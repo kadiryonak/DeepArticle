@@ -120,10 +120,22 @@ temp/
 *.backup
 
 # =============================================================================
-# LangSmith / LangChain
+# LangSmith / LangChain / Chainlit
 # =============================================================================
 .langsmith/
 langsmith_traces/
+.chainlit/
+.files/
+chainlit.md
+
+# =============================================================================
+# DeepEval (agent evaluation)
+# =============================================================================
+.deepeval/
+.deepeval
+.deepeval-cache.json
+.deepeval_telemtry.txt
+temp_test_run_data.json
 
 # =============================================================================
 # Cache

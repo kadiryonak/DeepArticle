@@ -1,0 +1,52 @@
+# Keep the build context small and never bake secrets into the image.
+
+# Secrets / local env
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Runtime cache & outputs (regenerated at runtime)
+.cache/
+*.cache
+scimago_cache.json
+results/
+output/
+exports/
+*.log
+logs/
+
+# Eval / tracing artifacts
+.deepeval/
+.deepeval
+.deepeval-cache.json
+.chainlit/
+
+# VCS / IDE / OS
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs & CI not needed in the image
+.github/
+*.md
+!readme.md

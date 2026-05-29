@@ -1,0 +1,27 @@
+# =============================================================================
+# DeepArticle - docker compose
+# Quick start on any machine with Docker:
+#   1. cp .env.example .env   &&  add at least one LLM API key
+#   2. docker compose up --build
+#   3. open http://localhost:8000
+# =============================================================================
+services:
+  deeparticle:
+    build: .
+    image: deeparticle:latest
+    container_name: deeparticle
+    ports:
+      - "8000:8000"
+    # Loads API keys and settings from your local .env (never committed).
+    env_file:
+      - .env
+    environment:
+      # Override the cache dir to point at the mounted volume.
+      DEEPARTICLE_CACHE_DIR: /app/.cache
+    volumes:
+      # Persist the API response cache across restarts.
+      - deeparticle-cache:/app/.cache
+    restart: unless-stopped
+
+volumes:
+  deeparticle-cache:
