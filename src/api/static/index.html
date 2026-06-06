@@ -18,14 +18,84 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo, useRef, createContext, useContext } = React;
 
-    const EXAMPLES = [
-      "unit test generation using large language models",
-      "retrieval augmented generation for question answering",
-      "graph neural networks for drug discovery",
-    ];
+    // ---------------------------------------------------------------- i18n ----
+    const STRINGS = {
+      en: {
+        subtitle: "Multi-agent academic paper analysis",
+        provider: "Provider", sources: "Sources",
+        searchPlaceholder: "Enter a research topic…",
+        search: "Search", searching: "Searching…",
+        emptyHint: "Enter a research topic to discover and rank academic papers.",
+        connLost: "Connection lost. Is the server running?",
+        topicAnalysis: "Topic Analysis", concepts: "Concepts", relatedSystems: "Related systems",
+        thesis: "Thesis", foundInDbs: "databases", cites: "cites", untitled: "Untitled",
+        link: "Link", pdf: "PDF",
+        studyPlan: "Study plan", startHere: "Start here",
+        papers: "papers", minCites: "Min cites", source: "Source", sort: "Sort",
+        sortScore: "Score", sortCitations: "Citations", sortYear: "Year", exportJson: "Export JSON",
+        footer: "open source",
+        groups: { most_cited: "🔝 Most cited", newest: "🆕 Newest", top_venues: "🏆 Top venues",
+                  theses: "🎓 Theses", open_access: "📥 Open access" },
+        stages: { "Foundational": "Foundational", "Core": "Core", "Advanced / Recent": "Advanced / Recent" },
+        nodes: {
+          starting: "Starting", orchestrator: "Starting pipeline",
+          query_analyzer: "Analyzing topic & expanding queries",
+          search: "Searching academic sources", metadata: "Enriching metadata",
+          analysis: "Scoring & ranking papers", summarizer: "Summarizing top papers",
+          prioritizer: "Optimizing reading order", recommender: "Building study plan & groups",
+          final: "Finalizing",
+        },
+        examples: [
+          "retrieval augmented generation for question answering",
+          "graph neural networks for drug discovery",
+          "unit test generation using large language models",
+        ],
+      },
+      tr: {
+        subtitle: "Çok ajanlı akademik makale analizi",
+        provider: "Sağlayıcı", sources: "Kaynaklar",
+        searchPlaceholder: "Bir araştırma konusu yazın…",
+        search: "Ara", searching: "Aranıyor…",
+        emptyHint: "Akademik makaleleri keşfedip sıralamak için bir araştırma konusu yazın.",
+        connLost: "Bağlantı koptu. Sunucu çalışıyor mu?",
+        topicAnalysis: "Konu Analizi", concepts: "Kavramlar", relatedSystems: "İlgili sistemler",
+        thesis: "Tez", foundInDbs: "veritabanı", cites: "atıf", untitled: "Başlıksız",
+        link: "Bağlantı", pdf: "PDF",
+        studyPlan: "Çalışma planı", startHere: "Buradan başla",
+        papers: "makale", minCites: "Min atıf", source: "Kaynak", sort: "Sırala",
+        sortScore: "Puan", sortCitations: "Atıf", sortYear: "Yıl", exportJson: "JSON indir",
+        footer: "açık kaynak",
+        groups: { most_cited: "🔝 En atıflı", newest: "🆕 En yeni", top_venues: "🏆 Kaliteli dergiler",
+                  theses: "🎓 Tezler", open_access: "📥 Açık erişim" },
+        stages: { "Foundational": "Temel", "Core": "Çekirdek", "Advanced / Recent": "İleri / Güncel" },
+        nodes: {
+          starting: "Başlatılıyor", orchestrator: "Pipeline başlatılıyor",
+          query_analyzer: "Konu analizi & sorgu genişletme",
+          search: "Akademik kaynaklar aranıyor", metadata: "Üst veriler zenginleştiriliyor",
+          analysis: "Makaleler puanlanıp sıralanıyor", summarizer: "En iyi makaleler özetleniyor",
+          prioritizer: "Okuma sırası iyileştiriliyor", recommender: "Çalışma planı & gruplar oluşturuluyor",
+          final: "Tamamlanıyor",
+        },
+        examples: [
+          "büyük dil modelleri ile soru cevaplama",
+          "graf sinir ağları ile ilaç keşfi",
+          "makine öğrenmesi ile yazılım test üretimi",
+        ],
+      },
+    };
 
+    const I18nContext = createContext(null);
+    const useI18n = () => useContext(I18nContext);
+
+    function detectLang() {
+      const saved = localStorage.getItem("da_lang");
+      if (saved === "en" || saved === "tr") return saved;
+      return (navigator.language || "").toLowerCase().startsWith("tr") ? "tr" : "en";
+    }
+
+    // -------------------------------------------------------------- helpers ----
     function scoreColor(score) {
       if (score >= 70) return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
       if (score >= 50) return "bg-amber-500/20 text-amber-300 border-amber-500/40";
@@ -33,8 +103,6 @@
       return "bg-slate-500/20 text-slate-300 border-slate-500/40";
     }
 
-    // Human-readable database names. (Phase 4 adds full TR/EN localization.)
-    const SOURCE_LABELS = { thesis: "Thesis", foundIn: "databases" };
     const SOURCE_NAMES = {
       arxiv: "arXiv", semantic_scholar: "Semantic Scholar", openalex: "OpenAlex",
       openalex_thesis: "OpenAlex (thesis)", core: "CORE", pubmed: "PubMed",
@@ -42,7 +110,30 @@
     };
     function sourceName(s) { return SOURCE_NAMES[s] || s; }
 
+    const STAGE_STYLE = {
+      "Foundational": "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+      "Core": "bg-sky-500/15 text-sky-300 border-sky-500/30",
+      "Advanced / Recent": "bg-purple-500/15 text-purple-300 border-purple-500/30",
+    };
+    const GROUP_ORDER = ["most_cited", "newest", "top_venues", "theses", "open_access"];
+
+    // ----------------------------------------------------------- components ----
+    function LangToggle() {
+      const { lang, setLang } = useI18n();
+      return (
+        <div className="flex rounded-lg overflow-hidden border border-white/15 text-xs">
+          {["tr", "en"].map(l => (
+            <button key={l} onClick={() => setLang(l)}
+              className={"px-2.5 py-1 font-medium " + (lang === l ? "bg-sky-500 text-white" : "bg-white/5 text-slate-300 hover:bg-white/10")}>
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
     function Header({ config }) {
+      const { t } = useI18n();
       return (
         <header className="border-b border-white/10 bg-white/5 backdrop-blur">
           <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -50,21 +141,25 @@
               <span className="text-2xl">🎓</span>
               <div>
                 <h1 className="text-lg font-semibold">DeepArticle</h1>
-                <p className="text-xs text-slate-400">Multi-agent academic paper analysis</p>
+                <p className="text-xs text-slate-400">{t.subtitle}</p>
               </div>
             </div>
-            {config && (
-              <div className="text-right text-xs text-slate-400">
-                <div>Provider: <span className="text-slate-200">{config.provider || "none"}</span></div>
-                <div>Sources: <span className="text-slate-200">{(config.sources || []).join(", ")}</span></div>
-              </div>
-            )}
+            <div className="flex items-center gap-4">
+              {config && (
+                <div className="text-right text-xs text-slate-400 hidden sm:block">
+                  <div>{t.provider}: <span className="text-slate-200">{config.provider || "none"}</span></div>
+                  <div>{t.sources}: <span className="text-slate-200">{(config.sources || []).join(", ")}</span></div>
+                </div>
+              )}
+              <LangToggle />
+            </div>
           </div>
         </header>
       );
     }
 
     function SearchBar({ onSearch, busy }) {
+      const { t } = useI18n();
       const [q, setQ] = useState("");
       return (
         <div className="space-y-3">
@@ -73,7 +168,7 @@
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !busy && q.trim() && onSearch(q.trim())}
-              placeholder="Enter a research topic…"
+              placeholder={t.searchPlaceholder}
               className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 outline-none focus:border-sky-400/60"
             />
             <button
@@ -81,11 +176,11 @@
               onClick={() => onSearch(q.trim())}
               className="rounded-xl px-5 py-3 font-medium bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
-              {busy ? "Searching…" : "Search"}
+              {busy ? t.searching : t.search}
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {EXAMPLES.map((ex) => (
+            {t.examples.map((ex) => (
               <button key={ex} disabled={busy}
                 onClick={() => { setQ(ex); onSearch(ex); }}
                 className="text-xs rounded-full px-3 py-1 bg-white/5 border border-white/10 hover:border-sky-400/50 text-slate-300 disabled:opacity-40">
@@ -98,12 +193,14 @@
     }
 
     function Pipeline({ progress }) {
+      const { t } = useI18n();
       if (!progress) return null;
       const pct = progress.total ? Math.round((progress.step / progress.total) * 100) : 0;
+      const label = t.nodes[progress.node] || progress.label || t.nodes.starting;
       return (
         <div className="fade-in rounded-xl bg-white/5 border border-white/10 p-4">
           <div className="flex justify-between text-sm mb-2">
-            <span className="text-slate-300">⚙️ {progress.label}…</span>
+            <span className="text-slate-300">⚙️ {label}…</span>
             <span className="text-slate-400">{progress.step}/{progress.total}</span>
           </div>
           <div className="h-2 rounded-full bg-white/10 overflow-hidden">
@@ -114,19 +211,21 @@
     }
 
     function TopicAnalysis({ analysis }) {
+      const { t } = useI18n();
       if (!analysis) return null;
       const { concepts = [], systems = [] } = analysis;
       if (!concepts.length && !systems.length) return null;
       return (
         <div className="rounded-xl bg-white/5 border border-white/10 p-4 text-sm">
-          <h3 className="font-medium mb-2 text-slate-200">🔬 Topic Analysis</h3>
-          {concepts.length > 0 && <p className="text-slate-400 mb-1"><b className="text-slate-300">Concepts:</b> {concepts.slice(0,6).join(", ")}</p>}
-          {systems.length > 0 && <p className="text-slate-400"><b className="text-slate-300">Related systems:</b> {systems.slice(0,8).join(", ")}</p>}
+          <h3 className="font-medium mb-2 text-slate-200">🔬 {t.topicAnalysis}</h3>
+          {concepts.length > 0 && <p className="text-slate-400 mb-1"><b className="text-slate-300">{t.concepts}:</b> {concepts.slice(0,6).join(", ")}</p>}
+          {systems.length > 0 && <p className="text-slate-400"><b className="text-slate-300">{t.relatedSystems}:</b> {systems.slice(0,8).join(", ")}</p>}
         </div>
       );
     }
 
     function PaperCard({ p, rank }) {
+      const { t } = useI18n();
       const score = p.total_score || 0;
       const year = (p.published_date || "").slice(0, 4);
       const venue = p.venue || p.journal_name || "";
@@ -141,8 +240,8 @@
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="font-medium leading-snug">
-                  {p.is_thesis && <span className="text-xs mr-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-400/30">🎓 {SOURCE_LABELS.thesis}</span>}
-                  {p.title || "Untitled"}
+                  {p.is_thesis && <span className="text-xs mr-1 px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-400/30">🎓 {t.thesis}</span>}
+                  {p.title || t.untitled}
                 </h3>
                 <span className={"shrink-0 text-xs px-2 py-1 rounded-lg border " + scoreColor(score)}>
                   {score.toFixed(1)}
@@ -153,22 +252,20 @@
                 {year && <span>📅 {year} </span>}
                 {venue && <span>· 📰 {venue} </span>}
                 {p.q_quartile && <span className="text-emerald-300">· {p.q_quartile} </span>}
-                <span>· 📈 {p.citation_count || 0} cites</span>
+                <span>· 📈 {p.citation_count || 0} {t.cites}</span>
                 {p.relevance_score ? <span> · 🎯 {Math.round(p.relevance_score)}%</span> : null}
               </p>
               {dbList.length > 1 && (
-                <p className="text-xs text-amber-300/90 mt-1">🗂️ {dbList.length} {SOURCE_LABELS.foundIn}: {dbList.map(s => sourceName(s)).join(", ")}</p>
+                <p className="text-xs text-amber-300/90 mt-1">🗂️ {dbList.length} {t.foundInDbs}: {dbList.map(s => sourceName(s)).join(", ")}</p>
               )}
               {p.summary && <p className="text-sm text-slate-300 mt-2">{p.summary.slice(0, 260)}{p.summary.length > 260 ? "…" : ""}</p>}
               <div className="flex flex-wrap gap-3 mt-2 text-xs items-center">
                 {links.map((l, idx) => (
-                  <a key={idx} className="text-sky-400 hover:underline" href={l.url} target="_blank">
-                    🔗 {sourceName(l.source)}{l.pdf_url ? "" : ""}
-                  </a>
+                  <a key={idx} className="text-sky-400 hover:underline" href={l.url} target="_blank">🔗 {sourceName(l.source)}</a>
                 ))}
-                {links.length === 0 && p.url && <a className="text-sky-400 hover:underline" href={p.url} target="_blank">🔗 Link</a>}
+                {links.length === 0 && p.url && <a className="text-sky-400 hover:underline" href={p.url} target="_blank">🔗 {t.link}</a>}
                 {pdfLinks.map((l, idx) => (
-                  <a key={"pdf"+idx} className="text-emerald-400 hover:underline" href={l.pdf_url} target="_blank">📥 PDF ({sourceName(l.source)})</a>
+                  <a key={"pdf"+idx} className="text-emerald-400 hover:underline" href={l.pdf_url} target="_blank">📥 {t.pdf} ({sourceName(l.source)})</a>
                 ))}
                 {p.doi && <span className="text-slate-500">DOI: {p.doi}</span>}
               </div>
@@ -178,20 +275,15 @@
       );
     }
 
-    const STAGE_STYLE = {
-      "Foundational": "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-      "Core": "bg-sky-500/15 text-sky-300 border-sky-500/30",
-      "Advanced / Recent": "bg-purple-500/15 text-purple-300 border-purple-500/30",
-    };
-
     function StudyPlan({ readingPath, startHere, byId }) {
+      const { t } = useI18n();
       if (!readingPath || !readingPath.length) return null;
       return (
         <div className="rounded-xl bg-gradient-to-br from-sky-500/10 to-purple-500/10 border border-white/10 p-4">
-          <h3 className="font-semibold text-sky-300 flex items-center gap-2">🧭 Study plan</h3>
+          <h3 className="font-semibold text-sky-300 flex items-center gap-2">🧭 {t.studyPlan}</h3>
           {startHere && (
             <p className="text-sm text-slate-300 mt-2">
-              <span className="text-emerald-300 font-medium">▶ Start here:</span>{" "}
+              <span className="text-emerald-300 font-medium">▶ {t.startHere}:</span>{" "}
               {startHere.title}{startHere.reason ? <span className="text-slate-400"> — {startHere.reason}</span> : null}
             </p>
           )}
@@ -201,9 +293,9 @@
               return (
                 <li key={i} className="flex items-start gap-2 text-sm">
                   <span className="text-slate-500 font-mono">{i + 1}.</span>
-                  <span className={"shrink-0 text-xs px-1.5 py-0.5 rounded border " + (STAGE_STYLE[s.stage] || "border-white/20 text-slate-300")}>{s.stage}</span>
+                  <span className={"shrink-0 text-xs px-1.5 py-0.5 rounded border " + (STAGE_STYLE[s.stage] || "border-white/20 text-slate-300")}>{t.stages[s.stage] || s.stage}</span>
                   <span className="min-w-0">
-                    {p && p.url ? <a className="text-sky-300 hover:underline" href={p.url} target="_blank">{s.title}</a> : (s.title || "(paper)")}
+                    {p && p.url ? <a className="text-sky-300 hover:underline" href={p.url} target="_blank">{s.title}</a> : (s.title || "—")}
                     {s.reason ? <span className="text-slate-400"> — {s.reason}</span> : null}
                   </span>
                 </li>
@@ -214,26 +306,20 @@
       );
     }
 
-    const GROUP_META = [
-      ["most_cited", "🔝 Most cited"],
-      ["newest", "🆕 Newest"],
-      ["top_venues", "🏆 Top venues"],
-      ["theses", "🎓 Theses"],
-      ["open_access", "📥 Open access"],
-    ];
-
     function Groups({ groups, byId }) {
-      const avail = GROUP_META.filter(([k]) => (groups[k] || []).length);
-      const [tab, setTab] = useState(avail.length ? avail[0][0] : null);
+      const { t } = useI18n();
+      const avail = GROUP_ORDER.filter(k => (groups[k] || []).length);
+      const [tab, setTab] = useState(avail.length ? avail[0] : null);
+      useEffect(() => { if (avail.length && !avail.includes(tab)) setTab(avail[0]); }, [groups]);
       if (!avail.length) return null;
       const ids = groups[tab] || [];
       return (
         <div className="rounded-xl bg-white/5 border border-white/10 p-4">
           <div className="flex flex-wrap gap-2 mb-3">
-            {avail.map(([k, label]) => (
+            {avail.map(k => (
               <button key={k} onClick={() => setTab(k)}
                 className={"text-xs px-2.5 py-1 rounded-lg border " + (tab === k ? "bg-sky-500/20 text-sky-300 border-sky-400/40" : "bg-white/5 text-slate-400 border-white/10 hover:border-white/20")}>
-                {label} ({(groups[k] || []).length})
+                {t.groups[k]} ({(groups[k] || []).length})
               </button>
             ))}
           </div>
@@ -246,7 +332,7 @@
                   <span className="text-slate-500 font-mono">{i + 1}.</span>
                   <span className="min-w-0">
                     {p.url ? <a className="text-sky-300 hover:underline" href={p.url} target="_blank">{p.title}</a> : p.title}
-                    <span className="text-slate-500 text-xs"> · {p.citation_count || 0} cites{(p.published_date || "").slice(0,4) ? " · " + (p.published_date||"").slice(0,4) : ""}</span>
+                    <span className="text-slate-500 text-xs"> · {p.citation_count || 0} {t.cites}{(p.published_date || "").slice(0,4) ? " · " + (p.published_date||"").slice(0,4) : ""}</span>
                   </span>
                 </li>
               );
@@ -257,6 +343,7 @@
     }
 
     function Results({ papers, analysis, groups, readingPath, startHere }) {
+      const { t } = useI18n();
       const [minCites, setMinCites] = useState(0);
       const [source, setSource] = useState("all");
       const [sortBy, setSortBy] = useState("score");
@@ -288,24 +375,24 @@
           <StudyPlan readingPath={readingPath} startHere={startHere} byId={byId} />
           <Groups groups={groups || {}} byId={byId} />
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="text-slate-400">{view.length} papers</span>
-            <label className="flex items-center gap-1 text-slate-400">Min cites
+            <span className="text-slate-400">{view.length} {t.papers}</span>
+            <label className="flex items-center gap-1 text-slate-400">{t.minCites}
               <input type="number" min="0" value={minCites} onChange={e => setMinCites(+e.target.value || 0)}
                 className="w-20 rounded bg-white/5 border border-white/10 px-2 py-1" />
             </label>
-            <label className="flex items-center gap-1 text-slate-400">Source
+            <label className="flex items-center gap-1 text-slate-400">{t.source}
               <select value={source} onChange={e => setSource(e.target.value)} className="rounded bg-white/5 border border-white/10 px-2 py-1">
-                {sources.map(s => <option key={s} value={s} className="bg-slate-800">{s}</option>)}
+                {sources.map(s => <option key={s} value={s} className="bg-slate-800">{s === "all" ? "all" : sourceName(s)}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-1 text-slate-400">Sort
+            <label className="flex items-center gap-1 text-slate-400">{t.sort}
               <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="rounded bg-white/5 border border-white/10 px-2 py-1">
-                <option value="score" className="bg-slate-800">Score</option>
-                <option value="citations" className="bg-slate-800">Citations</option>
-                <option value="year" className="bg-slate-800">Year</option>
+                <option value="score" className="bg-slate-800">{t.sortScore}</option>
+                <option value="citations" className="bg-slate-800">{t.sortCitations}</option>
+                <option value="year" className="bg-slate-800">{t.sortYear}</option>
               </select>
             </label>
-            <button onClick={exportJson} className="ml-auto rounded-lg px-3 py-1 bg-white/5 border border-white/10 hover:border-sky-400/50">⬇ Export JSON</button>
+            <button onClick={exportJson} className="ml-auto rounded-lg px-3 py-1 bg-white/5 border border-white/10 hover:border-sky-400/50">⬇ {t.exportJson}</button>
           </div>
           <div className="space-y-3">
             {view.map((p, i) => <PaperCard key={p.paper_id || i} p={p} rank={i + 1} />)}
@@ -315,6 +402,10 @@
     }
 
     function App() {
+      const [lang, setLangState] = useState(detectLang());
+      const setLang = (l) => { localStorage.setItem("da_lang", l); setLangState(l); };
+      const t = STRINGS[lang];
+
       const [config, setConfig] = useState(null);
       const [busy, setBusy] = useState(false);
       const [progress, setProgress] = useState(null);
@@ -327,20 +418,24 @@
       const esRef = useRef(null);
 
       useEffect(() => {
+        document.documentElement.lang = lang;
+      }, [lang]);
+
+      useEffect(() => {
         fetch("/api/config").then(r => r.json()).then(setConfig).catch(() => {});
       }, []);
 
       function search(query) {
         setBusy(true); setError(null); setPapers([]); setAnalysis(null);
         setGroups({}); setReadingPath([]); setStartHere(null);
-        setProgress({ label: "Starting", step: 0, total: 9 });
+        setProgress({ node: "starting", step: 0, total: 9 });
         if (esRef.current) esRef.current.close();
 
         const es = new EventSource("/api/search/stream?query=" + encodeURIComponent(query));
         esRef.current = es;
         es.onmessage = (e) => {
           const msg = JSON.parse(e.data);
-          if (msg.type === "progress") setProgress({ label: msg.label, step: msg.step, total: msg.total });
+          if (msg.type === "progress") setProgress({ node: msg.node, label: msg.label, step: msg.step, total: msg.total });
           else if (msg.type === "result") {
             setPapers(msg.papers || []); setAnalysis(msg.topic_analysis);
             setGroups(msg.groups || {}); setReadingPath(msg.reading_path || []); setStartHere(msg.start_here || null);
@@ -348,28 +443,30 @@
           else if (msg.type === "error") setError(msg.message);
           else if (msg.type === "done") { setBusy(false); setProgress(null); es.close(); }
         };
-        es.onerror = () => { setBusy(false); setProgress(null); setError("Connection lost. Is the server running?"); es.close(); };
+        es.onerror = () => { setBusy(false); setProgress(null); setError(t.connLost); es.close(); };
       }
 
       return (
-        <div className="min-h-screen">
-          <Header config={config} />
-          <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-            <SearchBar onSearch={search} busy={busy} />
-            <Pipeline progress={progress} />
-            {error && <div className="rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 p-4 text-sm">⚠ {error}</div>}
-            {!busy && !papers.length && !error && (
-              <div className="text-center text-slate-500 py-16">
-                <p className="text-4xl mb-3">🔍</p>
-                <p>Enter a research topic to discover and rank academic papers.</p>
-              </div>
-            )}
-            <Results papers={papers} analysis={analysis} groups={groups} readingPath={readingPath} startHere={startHere} />
-          </main>
-          <footer className="text-center text-xs text-slate-600 py-8">
-            DeepArticle · open source · MIT
-          </footer>
-        </div>
+        <I18nContext.Provider value={{ t, lang, setLang }}>
+          <div className="min-h-screen">
+            <Header config={config} />
+            <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+              <SearchBar onSearch={search} busy={busy} />
+              <Pipeline progress={progress} />
+              {error && <div className="rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 p-4 text-sm">⚠ {error}</div>}
+              {!busy && !papers.length && !error && (
+                <div className="text-center text-slate-500 py-16">
+                  <p className="text-4xl mb-3">🔍</p>
+                  <p>{t.emptyHint}</p>
+                </div>
+              )}
+              <Results papers={papers} analysis={analysis} groups={groups} readingPath={readingPath} startHere={startHere} />
+            </main>
+            <footer className="text-center text-xs text-slate-600 py-8">
+              DeepArticle · {t.footer} · MIT
+            </footer>
+          </div>
+        </I18nContext.Provider>
       );
     }
 

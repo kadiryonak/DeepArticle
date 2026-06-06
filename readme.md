@@ -26,7 +26,7 @@
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI
 - **💡 AI Summaries**: Generates concise summaries for top papers
 - **📄 PDF Full-Text**: Optionally extracts full text & IMRaD sections from open-access PDFs
-- **🌐 Web UI**: FastAPI backend + React SPA with **live agent-progress streaming** (plus a Chainlit prototype)
+- **🌐 Web UI**: FastAPI backend + React SPA with **live agent-progress streaming**, an AI **study plan** (reading path + result groups) and a **🇹🇷/🇬🇧 TR/EN language toggle** (plus a Chainlit prototype)
 - **🧪 Agent Evaluation**: LLM-as-judge quality checks via [DeepEval](evals/README.md)
 - **📄 Export**: Results exportable as JSON / Markdown
 
