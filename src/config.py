@@ -102,12 +102,17 @@ SEARCH_MAX_WORKERS = int(os.getenv("SEARCH_MAX_WORKERS", "8"))
 #   arxiv, semantic_scholar, openalex   — papers
 #   openalex_thesis                     — PhD/Master's theses (any language, incl. Turkish)
 #   core                                — open-access full text + theses (multilingual)
+#   crossref                            — DOI metadata + citation counts (~150M works)
+#   doaj                                — open-access journal articles
+#   dblp                                — computer-science bibliography
+#   openaire                            — European open-access aggregator (optional)
 #   pubmed                              — biomedical (optional)
 #   yoktez                              — YÖK Ulusal Tez Merkezi (Turkish theses, best-effort)
 SOURCES = [
     s.strip()
     for s in os.getenv(
-        "SOURCES", "arxiv,semantic_scholar,openalex,openalex_thesis,core"
+        "SOURCES",
+        "arxiv,semantic_scholar,openalex,openalex_thesis,core,crossref,doaj,dblp",
     ).split(",")
     if s.strip()
 ]

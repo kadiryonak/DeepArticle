@@ -15,6 +15,10 @@ from tools.arxiv_tools import search_arxiv
 from tools.semantic_scholar_tools import search_semantic_scholar
 from tools.openalex_tools import search_openalex, search_openalex_theses
 from tools.core_tools import search_core
+from tools.crossref_tools import search_crossref
+from tools.doaj_tools import search_doaj
+from tools.dblp_tools import search_dblp
+from tools.openaire_tools import search_openaire
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -106,6 +110,25 @@ def search_yoktez_with_query(query: str, max_results: int = 15) -> List[Dict[str
     return []
 
 
+def _simple_source(search_tool, name: str):
+    """Build a (query -> papers) wrapper for a source that needs no extra filtering."""
+    def _run(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+        try:
+            results = search_tool.invoke({"query": query, "max_results": max_results})
+            if results and not any("error" in r for r in results):
+                return results
+        except Exception as e:
+            logger.warning("%s search failed for query %r: %s", name, query, e)
+        return []
+    return _run
+
+
+search_crossref_with_query = _simple_source(search_crossref, "CrossRef")
+search_doaj_with_query = _simple_source(search_doaj, "DOAJ")
+search_dblp_with_query = _simple_source(search_dblp, "DBLP")
+search_openaire_with_query = _simple_source(search_openaire, "OpenAIRE")
+
+
 # Maps a source name to (search function, applies-to-query-index predicate).
 # Add a source to the SOURCES env var (comma-separated) to enable it.
 _SOURCE_FUNCS = {
@@ -117,6 +140,10 @@ _SOURCE_FUNCS = {
     "openalex": (search_openalex_with_query, lambda i: True),
     "openalex_thesis": (search_openalex_theses_with_query, lambda i: True),
     "core": (search_core_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+    "crossref": (search_crossref_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+    "doaj": (search_doaj_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+    "dblp": (search_dblp_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+    "openaire": (search_openaire_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
     "pubmed": (search_pubmed_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
     # YÖK Tez is fragile/rate-limited — only the first couple of queries.
     "yoktez": (search_yoktez_with_query, lambda i: i < 2),

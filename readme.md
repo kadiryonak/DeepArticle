@@ -19,7 +19,7 @@
 
 - **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20-30 targeted search queries
 - **🌍 Bilingual (TR + EN)**: Generates queries in both English and Turkish to find relevant work in either language
-- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex and **CORE** concurrently (PubMed optional)
+- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex, CORE, **CrossRef, DOAJ and DBLP** concurrently (OpenAIRE & PubMed optional)
 - **🎓 Thesis Discovery**: Finds PhD/Master's theses via OpenAlex dissertations and CORE — including Turkish theses (plus best-effort YÖK Ulusal Tez Merkezi)
 - **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
 - **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
@@ -272,8 +272,11 @@ DeepArticle/
 │   │   ├── openalex_tools.py          # OpenAlex papers + theses (no key)
 │   │   ├── core_tools.py              # CORE open-access full text + theses
 │   │   ├── yoktez_tools.py            # YÖK Ulusal Tez Merkezi (best-effort)
+│   │   ├── doaj_tools.py              # DOAJ open-access journal articles
+│   │   ├── dblp_tools.py              # DBLP computer-science bibliography
+│   │   ├── openaire_tools.py          # OpenAIRE OA aggregator (optional)
 │   │   ├── scimago_tools.py           # Journal rankings (Q quartile)
-│   │   ├── crossref_tools.py          # DOI metadata
+│   │   ├── crossref_tools.py          # DOI metadata + search (citation counts)
 │   │   ├── pdf_tools.py               # PDF full-text & section extraction
 │   │   ├── pubmed_tools.py            # PubMed API (optional source)
 │   │   └── google_scholar_tools.py    # Google Scholar (optional, slow)

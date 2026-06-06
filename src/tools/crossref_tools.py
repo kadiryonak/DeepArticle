@@ -1,13 +1,109 @@
 """
-CrossRef API tools for DOI-based metadata retrieval.
+CrossRef API tools: DOI metadata lookup + full-text query search.
+
+CrossRef indexes ~150M scholarly works with DOIs, venue names and citation
+counts (``is-referenced-by-count``). No API key required.
 """
 
-from typing import Dict, Any
+import re
+from typing import Dict, Any, List
 import requests
 from langchain_core.tools import tool
 
+import sys
+sys.path.insert(0, '..')
+from utils.cache import disk_cache
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 CROSSREF_API = "https://api.crossref.org/works"
+_HEADERS = {"User-Agent": "DeepArticle/1.0 (mailto:deeparticle@example.com)"}
+
+
+def _strip_jats(text: str) -> str:
+    """CrossRef abstracts are JATS XML; strip tags to plain text."""
+    return re.sub(r"<[^>]+>", "", text or "").strip()
+
+
+def _crossref_date(item: Dict[str, Any]) -> str:
+    parts = (
+        (item.get("published") or item.get("published-print") or item.get("published-online") or {})
+        .get("date-parts", [[]])
+    )
+    if parts and parts[0]:
+        p = parts[0]
+        y = p[0]
+        m = p[1] if len(p) > 1 else 1
+        d = p[2] if len(p) > 2 else 1
+        return f"{y}-{str(m).zfill(2)}-{str(d).zfill(2)}"
+    return None
+
+
+def _parse_crossref_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    authors = [
+        f"{a.get('given', '')} {a.get('family', '')}".strip()
+        for a in item.get("author", []) or []
+        if a.get("family") or a.get("given")
+    ]
+    doi = (item.get("DOI") or "").lower()
+    return {
+        "paper_id": f"crossref:{doi}" if doi else "",
+        "title": (item.get("title") or [""])[0] or "",
+        "authors": authors,
+        "abstract": _strip_jats(item.get("abstract", "")),
+        "published_date": _crossref_date(item),
+        "source": "crossref",
+        "url": item.get("URL", "") or (f"https://doi.org/{doi}" if doi else ""),
+        "pdf_url": "",
+        "doi": doi,
+        "journal_name": (item.get("container-title") or [""])[0] or "",
+        "venue": (item.get("container-title") or [""])[0] or "",
+        "venue_type": item.get("type", "") or "",
+        "publication_type": item.get("type", "") or "",
+        "is_thesis": item.get("type") == "dissertation",
+        "language": item.get("language", "") or "",
+        "citation_count": item.get("is-referenced-by-count", 0) or 0,
+        "influential_citations": 0,
+        "impact_factor": None,
+        "q_quartile": None,
+        "relevance_score": 0.0,
+        "total_score": 0.0,
+        "summary": None,
+        "reading_priority": 0,
+        "fields_of_study": [],
+    }
+
+
+@disk_cache(namespace="crossref_search")
+def _search_crossref_cached(query: str, max_results: int = 20) -> List[Dict[str, Any]]:
+    try:
+        response = requests.get(
+            CROSSREF_API,
+            params={"query": query, "rows": min(max_results, 50)},
+            headers=_HEADERS,
+            timeout=30,
+        )
+        response.raise_for_status()
+        items = response.json().get("message", {}).get("items", []) or []
+        papers = [_parse_crossref_item(it) for it in items]
+        papers.sort(key=lambda x: x.get("citation_count", 0), reverse=True)
+        return papers
+    except requests.exceptions.RequestException as e:
+        logger.warning("CrossRef search failed for query %r: %s", query, e)
+        return [{"error": f"CrossRef search failed: {str(e)}"}]
+    except Exception as e:
+        logger.warning("CrossRef parse failed for query %r: %s", query, e)
+        return [{"error": f"CrossRef search failed: {str(e)}"}]
+
+
+@tool
+def search_crossref(query: str, max_results: int = 20) -> List[Dict[str, Any]]:
+    """
+    Search CrossRef for scholarly works matching the query.
+    Returns papers with DOIs, venues and citation counts. No API key required.
+    """
+    return _search_crossref_cached(query, max_results)
 
 
 @tool
@@ -93,4 +189,4 @@ def get_paper_metadata_by_doi(doi: str) -> Dict[str, Any]:
 
 def get_crossref_tools():
     """Return list of CrossRef tools."""
-    return [get_paper_metadata_by_doi]
+    return [search_crossref, get_paper_metadata_by_doi]
