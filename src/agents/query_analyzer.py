@@ -160,8 +160,9 @@ def query_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     print("=" * 65)
     print(f"Topic: {topic}\n")
     
-    # Temperature 0 → deterministic, reproducible query generation.
-    llm = create_llm(temperature=0.0)
+    # Fully deterministic decoding (temperature 0 + greedy top_p/top_k) so the
+    # same topic always yields the same concepts, keywords and queries.
+    llm = create_llm(temperature=0.0, top_p=1.0, top_k=1)
     analysis = None
 
     if llm:

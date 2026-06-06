@@ -14,36 +14,42 @@ from config import (
 def create_llm(
     provider: Optional[str] = None,
     model: Optional[str] = None,
-    temperature: Optional[float] = None
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
 ) -> Optional[Any]:
     """
     Create an LLM instance based on the specified or configured provider.
-    
+
     Args:
         provider: LLM provider (groq, openai, anthropic, google). Defaults to config.
         model: Model name. Defaults to config.
         temperature: Temperature for generation. Defaults to config.
-    
+        top_p: Nucleus-sampling parameter. Pass for deterministic generation
+            (e.g. temperature=0, top_p=1.0). Applied to all providers.
+        top_k: Top-k sampling. Pass top_k=1 for greedy/deterministic decoding.
+            Only Anthropic and Google support it; ignored for Groq/OpenAI.
+
     Returns:
         LLM instance or None if no valid provider/key
     """
     provider = provider or LLM_PROVIDER
     model = model or LLM_MODEL
     temperature = temperature if temperature is not None else LLM_TEMPERATURE
-    
+
     if not provider:
         print("⚠ No LLM provider configured. Add an API key to .env")
         return None
-    
+
     try:
         if provider == "groq":
-            return _create_groq_llm(model, temperature)
+            return _create_groq_llm(model, temperature, top_p, top_k)
         elif provider == "openai":
-            return _create_openai_llm(model, temperature)
+            return _create_openai_llm(model, temperature, top_p, top_k)
         elif provider == "anthropic":
-            return _create_anthropic_llm(model, temperature)
+            return _create_anthropic_llm(model, temperature, top_p, top_k)
         elif provider == "google":
-            return _create_google_llm(model, temperature)
+            return _create_google_llm(model, temperature, top_p, top_k)
         else:
             print(f"⚠ Unknown provider: {provider}")
             return None
@@ -56,60 +62,60 @@ def create_llm(
         return None
 
 
-def _create_groq_llm(model: str, temperature: float):
-    """Create Groq LLM instance."""
+def _create_groq_llm(model, temperature, top_p=None, top_k=None):
+    """Create Groq LLM instance. (Groq supports top_p, not top_k.)"""
     if not GROQ_API_KEY:
         print("⚠ GROQ_API_KEY not set")
         return None
-    
+
     from langchain_groq import ChatGroq
-    return ChatGroq(
-        api_key=GROQ_API_KEY,
-        model_name=model,
-        temperature=temperature
-    )
+    kwargs = {"api_key": GROQ_API_KEY, "model_name": model, "temperature": temperature}
+    if top_p is not None:
+        kwargs["model_kwargs"] = {"top_p": top_p}
+    return ChatGroq(**kwargs)
 
 
-def _create_openai_llm(model: str, temperature: float):
-    """Create OpenAI LLM instance."""
+def _create_openai_llm(model, temperature, top_p=None, top_k=None):
+    """Create OpenAI LLM instance. (OpenAI supports top_p, not top_k.)"""
     if not OPENAI_API_KEY:
         print("⚠ OPENAI_API_KEY not set")
         return None
-    
+
     from langchain_openai import ChatOpenAI
-    return ChatOpenAI(
-        api_key=OPENAI_API_KEY,
-        model=model,
-        temperature=temperature
-    )
+    kwargs = {"api_key": OPENAI_API_KEY, "model": model, "temperature": temperature}
+    if top_p is not None:
+        kwargs["top_p"] = top_p
+    return ChatOpenAI(**kwargs)
 
 
-def _create_anthropic_llm(model: str, temperature: float):
-    """Create Anthropic LLM instance."""
+def _create_anthropic_llm(model, temperature, top_p=None, top_k=None):
+    """Create Anthropic LLM instance. (Supports both top_p and top_k.)"""
     if not ANTHROPIC_API_KEY:
         print("⚠ ANTHROPIC_API_KEY not set")
         return None
-    
+
     from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(
-        api_key=ANTHROPIC_API_KEY,
-        model=model,
-        temperature=temperature
-    )
+    kwargs = {"api_key": ANTHROPIC_API_KEY, "model": model, "temperature": temperature}
+    if top_p is not None:
+        kwargs["top_p"] = top_p
+    if top_k is not None:
+        kwargs["top_k"] = top_k
+    return ChatAnthropic(**kwargs)
 
 
-def _create_google_llm(model: str, temperature: float):
-    """Create Google LLM instance."""
+def _create_google_llm(model, temperature, top_p=None, top_k=None):
+    """Create Google LLM instance. (Supports both top_p and top_k.)"""
     if not GOOGLE_API_KEY:
         print("⚠ GOOGLE_API_KEY not set")
         return None
-    
+
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(
-        google_api_key=GOOGLE_API_KEY,
-        model=model,
-        temperature=temperature
-    )
+    kwargs = {"google_api_key": GOOGLE_API_KEY, "model": model, "temperature": temperature}
+    if top_p is not None:
+        kwargs["top_p"] = top_p
+    if top_k is not None:
+        kwargs["top_k"] = top_k
+    return ChatGoogleGenerativeAI(**kwargs)
 
 
 def get_available_providers() -> list:

@@ -17,7 +17,7 @@
 
 ## 🚀 Features
 
-- **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20-30 targeted search queries
+- **🔬 Focused, Deterministic Query Analysis**: LLM extracts the topic's key concepts and a small, on-topic query set — run at temperature 0 with greedy `top_p`/`top_k` so the same topic always yields the same queries (no drift)
 - **🌍 Bilingual (TR + EN)**: Generates queries in both English and Turkish to find relevant work in either language
 - **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex, CORE, **CrossRef, DOAJ and DBLP** concurrently (OpenAIRE & PubMed optional)
 - **🎓 Thesis Discovery**: Finds PhD/Master's theses via OpenAlex dissertations and CORE — including Turkish theses (plus best-effort YÖK Ulusal Tez Merkezi)
@@ -39,8 +39,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/kadiryonak/agentic_systemm.git
-cd agentic_systemm
+git clone https://github.com/kadiryonak/DeepArticle.git
+cd DeepArticle
 ```
 
 ### 2. Create Virtual Environment
@@ -175,71 +175,41 @@ Then open http://localhost:8000 in your browser.
 
 ## 🏗️ Architecture
 
+A 10-stage LangGraph pipeline of specialized agents:
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      USER QUERY                              │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   ORCHESTRATOR AGENT                         │
-│              (Coordinates the workflow)                      │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 QUERY ANALYZER AGENT                         │
-│    • LLM-powered topic analysis                              │
-│    • Discovers relevant tools/systems                        │
-│    • Generates 20+ targeted search queries                   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    SEARCH AGENT                              │
-│    • ArXiv API (CS categories: cs.SE, cs.AI, cs.LG)         │
-│    • Semantic Scholar API                                    │
-│    • Deduplication & citation-based sorting                  │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   METADATA AGENT                             │
-│    • Enriches papers with additional metrics                 │
-│    • SCImago journal rankings                                │
-│    • CrossRef metadata                                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   ANALYSIS AGENT                             │
-│    • Calculates relevance scores                             │
-│    • Quality metrics (citations, venue, recency)             │
-│    • Total score computation                                 │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  SUMMARIZER AGENT                            │
-│    • LLM-generated summaries for top 10 papers               │
-│    • Fallback to truncated abstracts                         │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  PRIORITIZER AGENT                           │
-│    • Optimizes reading order                                 │
-│    • Source diversity                                        │
-│    • Final ranking                                           │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FINAL OUTPUT                              │
-│    • Formatted reading list                                  │
-│    • JSON export                                             │
-│    • Statistics                                              │
-└─────────────────────────────────────────────────────────────┘
+USER QUERY
+   │
+   ▼
+1. ORCHESTRATOR      coordinates the workflow
+   │
+   ▼
+2. QUERY ANALYZER    deterministic LLM topic analysis → a focused set of
+   │                 on-topic queries in EN + TR (temperature 0, top_p/top_k greedy)
+   ▼
+3. SEARCH            11 sources in parallel (arXiv, Semantic Scholar, OpenAlex,
+   │                 OpenAlex-thesis, CORE, CrossRef, DOAJ, DBLP, +OpenAIRE/PubMed/YÖK)
+   │                 → cross-database dedup (DOI/title) with provenance
+   ▼
+4. METADATA          enrich with citations, SCImago Q-quartile, CrossRef
+   │
+   ▼
+5. ANALYSIS          quality scoring (citations, venue, recency, influence)
+   │                 + 🎯 language-agnostic LLM RERANK (drops off-topic papers)
+   ▼
+6. SUMMARIZER        LLM summaries for the top papers (faithful to abstracts)
+   │
+   ▼
+7. PRIORITIZER       reading order with source diversity
+   │
+   ▼
+8. RECOMMENDER       AI study plan (Foundational→Core→Advanced) + result groups
+   │
+   ▼
+9. RESOURCES         real GitHub repos / Medium articles / YouTube videos
+   │
+   ▼
+10. FINAL OUTPUT     ranked reading list · study plan · JSON/Markdown export
 ```
 
 ---
@@ -251,10 +221,16 @@ Papers are ranked using a weighted multi-factor algorithm:
 | Factor | Weight | Description |
 |--------|--------|-------------|
 | **Citations** | 25% | Total citation count (log-scaled) |
-| **Relevance** | 25% | Keyword match in title/abstract |
+| **Relevance** | 25% | Topical relevance to the query |
 | **Venue** | 20% | Conference/journal quality (ICSE, TSE, etc.) |
 | **Recency** | 15% | Publication year (2024-2025 highest) |
 | **Influence** | 15% | Influential citations from Semantic Scholar |
+
+> **Relevance is reranked by an LLM.** Keyword matching is only the first pass and
+> is biased toward the query's language. An LLM (e.g. Haiku) then re-scores the top
+> candidates by true, **language-agnostic** topical relevance and drops off-topic
+> papers — so the highest-relevance papers surface in any language. Configure via
+> `ENABLE_RERANK`, `RELEVANCE_MIN`, `RERANK_PROVIDER`/`RERANK_MODEL`.
 
 ---
 
@@ -331,7 +307,7 @@ python -m pytest tests/test_core.py -v
 python -m pytest tests/ --cov=. --cov-report=html
 ```
 
-**Test Results**: 28/28 tests passing ✅
+**Test Results**: 105 unit/integration tests passing ✅ (offline; live e2e & eval suites are opt-in)
 
 ---
 
@@ -394,11 +370,19 @@ differ). On benign academic summaries **all six pass**:
 | `NonAdviceMetric` | safe | ✅ | no medical/legal/financial advice |
 | `RoleViolationMetric` | safe | ✅ | stays in the research-assistant role |
 
+**Reranking impact (on-topic precision):** with language-agnostic LLM reranking,
+a Turkish query for *"large language models for question answering"* drops **16
+off-topic papers** (autonomous-vehicle sentiment, digital diplomacy, listening
+strategies, …) from the candidate pool and surfaces the most relevant work in
+**both** Turkish and English — e.g. *"Türkçe soru cevaplama için büyük dil
+modelleri"* (rel 95) alongside *"Multilingual Benchmarking of LLMs"* (rel 85).
+Without reranking, keyword relevance ranked unrelated Turkish papers at 100%.
+
 > **Sample size & rate limits:** the numbers above come from small live samples.
 > Running the full 300-topic `--deep`/`--safety` benchmark makes ~9–11 judge
-> calls *per topic*, which exceeds Groq's free-tier rate limit (HTTP 429). For a
-> full run, use a higher-tier key or a different judge (`LLM_MODEL` /
-> `LLM_PROVIDER`), or run in small batches with `--limit`.
+> calls *per topic*, which exceeds Groq's free-tier daily token limit (HTTP 429).
+> For a full run, use Haiku (`LLM_PROVIDER=anthropic`) or another key, or run in
+> small batches with `--limit`.
 
 ### 🤖 Agent-trace metrics, MCP & Confident AI (roadmap)
 
@@ -419,25 +403,22 @@ integration is planned as a follow-up.
 ```
 🎯 MULTI-AGENT ACADEMIC PAPER ANALYSIS SYSTEM
 ============================================================
-
 📝 Query: unit test generation using large language models
 
-🔬 QUERY ANALYZER AGENT - Deep Topic Analysis
-✓ LLM discovered:
-   📚 Core Concepts: LLM, unit testing, automated testing
-   🔧 Discovered Systems: EvoSuite, Randoop, Pynguin, HITS
-   🔍 Generated Queries: 14
+🔬 QUERY ANALYZER (deterministic)
+   📚 Core Concepts: LLM, unit testing, test generation
+   🔍 12 focused queries (English + Turkish)
 
-📚 SEARCH AGENT - Multi-Query CS Search
-   Found: 45 unique papers
+📚 SEARCH AGENT — 12 queries × 8 sources in parallel
+   Found: 45 unique papers (cross-database dedup, with provenance)
 
-📊 ANALYSIS AGENT - Top 5 Papers:
-   ⭐ #1: TestPilot (TSE) - Score: 81.0 - Citations: 379
-   ⭐ #2: HITS (ASE 2024) - Score: 72.5 - Citations: 60
-   ⭐ #3: LLM Evaluation Study (ASE) - Score: 69.5 - Citations: 63
-   ⭐ #4: AgoneTest (ICSTW) - Score: 61.5 - Citations: 18
-   ⭐ #5: Domain Adaptation (ISSTA) - Score: 57.0 - Citations: 18
+📊 ANALYSIS + 🎯 LLM RERANK (language-agnostic)
+   Reranked 50 candidates; dropped 11 off-topic
+   ⭐ #1: TestPilot (TSE)            Score 81.0 · rel 100 · 379 cites
+   ⭐ #2: HITS (ASE 2024)            Score 72.5 · rel  95 · 60 cites
+   ⭐ #3: LLM Test-Gen Study (ASE)   Score 69.5 · rel  92 · 63 cites
 
+🧭 STUDY PLAN: Foundational → Core → Advanced  ·  🌐 5 GitHub repos, 5 articles
 ✓ Exported to results.json
 ```
 
@@ -448,21 +429,31 @@ integration is planned as a follow-up.
 Edit `.env` file:
 
 ```bash
-# LLM Provider (auto-detected if not set)
-LLM_PROVIDER=groq
-LLM_MODEL=llama-3.3-70b-versatile
+# LLM Provider (auto-detected if not set). Use Haiku to avoid Groq's daily limits:
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-haiku-4-5
 
-# Search Settings
+# Search Settings (fewer queries = more focused & on-topic)
 MAX_RESULTS_PER_SOURCE=15
-MAX_SEARCH_QUERIES=20
+MAX_SEARCH_QUERIES=12
 
 # Sources (papers + theses)
-SOURCES=arxiv,semantic_scholar,openalex,openalex_thesis,core
+SOURCES=arxiv,semantic_scholar,openalex,openalex_thesis,core,crossref,doaj,dblp
 
 # Bilingual search (English + Turkish)
 BILINGUAL_SEARCH=1
 SEARCH_LANGUAGES=en,tr
+
+# Language-agnostic LLM reranking (recommended; run on Haiku)
+ENABLE_RERANK=1
+RELEVANCE_MIN=40                 # drop papers scored below this (0-100)
+# RERANK_PROVIDER=anthropic      # rerank on a separate model than the main pipeline
+# RERANK_MODEL=claude-haiku-4-5
 ```
+
+> **Determinism:** topic analysis and reranking run at `temperature=0` with greedy
+> `top_p`/`top_k`, so the same query reliably produces the same keywords, queries
+> and ranking.
 
 ### 🌍 Multilingual & 🎓 Thesis Search
 

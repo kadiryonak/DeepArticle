@@ -222,6 +222,8 @@ def analysis_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
             provider=RERANK_PROVIDER or None,
             model=RERANK_MODEL or None,
             temperature=0.0,
+            top_p=1.0,
+            top_k=1,
         )
         if rerank_llm is not None:
             print("\n🎯 Reranking by language-agnostic relevance (LLM)...")
