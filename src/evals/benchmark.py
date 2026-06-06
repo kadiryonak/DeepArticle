@@ -40,7 +40,6 @@ from typing import Any, Dict, List, Optional
 import sys
 sys.path.insert(0, '..')
 
-from agents.query_analyzer import analyze_topic_with_llm, generate_search_queries
 from utils.llm_factory import create_llm
 from evals.benchmark_questions import get_questions
 from evals.eval_model import get_eval_model
@@ -111,6 +110,9 @@ def run_one(item: Dict[str, str], llm, judge, deep: bool) -> Dict[str, Any]:
                            "query": topic, "metrics": {}, "error": None}
     t0 = time.time()
     try:
+        # Imported at call time so tests can monkeypatch agents.query_analyzer.*
+        from agents.query_analyzer import analyze_topic_with_llm, generate_search_queries
+
         analysis = analyze_topic_with_llm(topic, llm) or {}
         queries = generate_search_queries(topic, analysis)
 
