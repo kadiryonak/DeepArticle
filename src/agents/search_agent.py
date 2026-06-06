@@ -194,29 +194,77 @@ def _dedup_key(paper: Dict[str, Any]) -> str:
     return "title:" + "".join(c for c in title if c.isalnum())[:80]
 
 
+def _add_provenance(paper: Dict[str, Any], source: str) -> None:
+    """Record which database a paper came from and its link there (in place)."""
+    link = {
+        "source": source,
+        "url": paper.get("url", "") or "",
+        "pdf_url": paper.get("pdf_url", "") or "",
+    }
+    found_in = paper.setdefault("found_in", [])
+    if source not in found_in:
+        found_in.append(source)
+    links = paper.setdefault("source_links", [])
+    if not any(existing["source"] == source for existing in links):
+        links.append(link)
+
+
+def _merge_duplicate(into: Dict[str, Any], other: Dict[str, Any]) -> None:
+    """
+    Fold ``other`` (a duplicate of ``into``) into ``into`` (in place).
+
+    Keeps the richest data: the higher citation count, a non-empty abstract,
+    a usable PDF link, the union of fields/provenance — so the same work found
+    in several databases collapses into ONE entry that lists all of them.
+    """
+    if (other.get("citation_count", 0) or 0) > (into.get("citation_count", 0) or 0):
+        into["citation_count"] = other.get("citation_count", 0) or 0
+    if not into.get("abstract") and other.get("abstract"):
+        into["abstract"] = other["abstract"]
+    if not into.get("pdf_url") and other.get("pdf_url"):
+        into["pdf_url"] = other["pdf_url"]
+    if not into.get("doi") and other.get("doi"):
+        into["doi"] = other["doi"]
+    if not into.get("is_thesis") and other.get("is_thesis"):
+        into["is_thesis"] = True
+    # Union fields of study.
+    existing_fields = into.get("fields_of_study") or []
+    for f in other.get("fields_of_study") or []:
+        if f and f not in existing_fields:
+            existing_fields.append(f)
+    into["fields_of_study"] = existing_fields
+    # Carry over each source the duplicate was found in.
+    for link in other.get("source_links", []):
+        _add_provenance(into, link["source"])
+        for existing in into["source_links"]:
+            if existing["source"] == link["source"]:
+                existing["url"] = existing["url"] or link["url"]
+                existing["pdf_url"] = existing["pdf_url"] or link["pdf_url"]
+
+
 def merge_papers(search_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     """
     Merge papers from all sources, removing duplicates.
 
-    Deduplicates by DOI (when present) then by normalized title, keeping the
-    record with the higher citation count.
+    Deduplicates by DOI (when present) then by normalized title. A work found in
+    multiple databases becomes a single entry whose ``found_in`` lists every
+    source and whose ``source_links`` holds each database's link — so nothing is
+    shown twice, but every link is preserved.
     """
-    seen = {}  # dedup_key -> paper
+    seen: Dict[str, Dict[str, Any]] = {}  # dedup_key -> paper
 
-    for _source, papers in search_results.items():
+    for source, papers in search_results.items():
         for paper in papers:
             key = _dedup_key(paper)
             if key in ("doi:", "title:"):
                 continue
 
-            citations = paper.get("citation_count", 0) or 0
+            _add_provenance(paper, source)
 
             if key not in seen:
                 seen[key] = paper
             else:
-                existing_citations = seen[key].get("citation_count", 0) or 0
-                if citations > existing_citations:
-                    seen[key] = paper
+                _merge_duplicate(seen[key], paper)
 
     # Sort by citation count
     merged = sorted(seen.values(), key=lambda p: p.get("citation_count", 0) or 0, reverse=True)

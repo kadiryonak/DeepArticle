@@ -60,3 +60,45 @@ class TestParallelSearch:
 
         results = sa.search_cs_sources(["q1", "q2", "q3"], max_results_per_query=5)
         assert len(results["limited"]) == 1
+
+
+class TestMergeProvenance:
+    def test_same_doi_collapses_with_all_sources(self):
+        results = {
+            "openalex": [{
+                "title": "Deep Learning", "doi": "10.1/x",
+                "citation_count": 100, "url": "https://openalex/x",
+            }],
+            "core": [{
+                "title": "Deep Learning", "doi": "10.1/X",  # same DOI, different case
+                "citation_count": 80, "url": "https://core/x", "pdf_url": "https://core/x.pdf",
+            }],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 1
+        p = merged[0]
+        # Found in both databases, each link preserved.
+        assert set(p["found_in"]) == {"openalex", "core"}
+        assert {l["source"] for l in p["source_links"]} == {"openalex", "core"}
+        # Richest data kept: higher citation count + the PDF from CORE.
+        assert p["citation_count"] == 100
+        assert p["pdf_url"] == "https://core/x.pdf"
+
+    def test_same_title_dedup(self):
+        results = {
+            "arxiv": [{"title": "A Great Paper", "citation_count": 5, "url": "a"}],
+            "openalex": [{"title": "a great paper", "citation_count": 9, "url": "b"}],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 1
+        assert merged[0]["citation_count"] == 9
+        assert len(merged[0]["found_in"]) == 2
+
+    def test_distinct_papers_kept_separate(self):
+        results = {
+            "arxiv": [{"title": "Paper One", "citation_count": 1, "url": "a"}],
+            "core": [{"title": "Paper Two", "citation_count": 2, "url": "b"}],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 2
+        assert all(len(p["found_in"]) == 1 for p in merged)
