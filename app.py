@@ -8,9 +8,9 @@ from typing import Dict, Any, List
 import json
 import os
 
-# Add parent directory to path
+# Application code lives under src/ — put it on the import path.
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 from graph.workflow import run_analysis
 from config import LLM_PROVIDER, LLM_MODEL, get_llm_info

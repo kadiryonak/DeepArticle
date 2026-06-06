@@ -17,14 +17,18 @@
 
 ## 🚀 Features
 
-- **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20+ targeted search queries
-- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar **and OpenAlex** concurrently (PubMed optional)
+- **🔬 Focused, Deterministic Query Analysis**: LLM extracts the topic's key concepts and a small, on-topic query set — run at temperature 0 with greedy `top_p`/`top_k` so the same topic always yields the same queries (no drift)
+- **🌍 Bilingual (TR + EN)**: Generates queries in both English and Turkish to find relevant work in either language
+- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex, CORE, **CrossRef, DOAJ and DBLP** concurrently (OpenAIRE & PubMed optional)
+- **🎓 Thesis Discovery**: Finds PhD/Master's theses via OpenAlex dissertations and CORE — including Turkish theses (plus best-effort YÖK Ulusal Tez Merkezi)
+- **🌐 Related Resources**: Surfaces **real** GitHub projects (star-filtered), Medium articles and YouTube videos for the topic — fetched from live APIs, never AI-generated (shown only if they actually exist)
 - **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
 - **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
+- **🎯 LLM Reranking (language-agnostic)**: An LLM (e.g. Haiku) re-scores the top candidates by true topical relevance — *independent of language* — and drops off-topic papers, so a Turkish query surfaces the most relevant papers in **any** language, not just Turkish ones
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI
 - **💡 AI Summaries**: Generates concise summaries for top papers
 - **📄 PDF Full-Text**: Optionally extracts full text & IMRaD sections from open-access PDFs
-- **🌐 Web UI**: FastAPI backend + React SPA with **live agent-progress streaming** (plus a Chainlit prototype)
+- **🌐 Web UI**: FastAPI backend + React SPA with **live agent-progress streaming**, an AI **study plan** (reading path + result groups) and a **🇹🇷/🇬🇧 TR/EN language toggle** (plus a Chainlit prototype)
 - **🧪 Agent Evaluation**: LLM-as-judge quality checks via [DeepEval](evals/README.md)
 - **📄 Export**: Results exportable as JSON / Markdown
 
@@ -35,8 +39,8 @@
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/kadiryonak/agentic_systemm.git
-cd agentic_systemm
+git clone https://github.com/kadiryonak/DeepArticle.git
+cd DeepArticle
 ```
 
 ### 2. Create Virtual Environment
@@ -120,6 +124,14 @@ Then open http://localhost:8000 in your browser. Features: live pipeline
 progress bar, ranked paper cards with score badges, filters (min citations,
 source, sort), and JSON export.
 
+**Live search & topic analysis** (with the 🇹🇷/🇬🇧 language toggle):
+
+![Live search and pipeline progress](images/TopicAnalyses.png)
+
+**AI study plan, result groups and related resources:**
+
+![Study plan, groups and resources](images/StudyPlan.png)
+
 **API endpoints:**
 - `GET  /api/config` — active provider, model and sources
 - `POST /api/search` — `{ "query": "..." }`, returns the ranked list
@@ -163,71 +175,41 @@ Then open http://localhost:8000 in your browser.
 
 ## 🏗️ Architecture
 
+A 10-stage LangGraph pipeline of specialized agents:
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      USER QUERY                              │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   ORCHESTRATOR AGENT                         │
-│              (Coordinates the workflow)                      │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 QUERY ANALYZER AGENT                         │
-│    • LLM-powered topic analysis                              │
-│    • Discovers relevant tools/systems                        │
-│    • Generates 20+ targeted search queries                   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    SEARCH AGENT                              │
-│    • ArXiv API (CS categories: cs.SE, cs.AI, cs.LG)         │
-│    • Semantic Scholar API                                    │
-│    • Deduplication & citation-based sorting                  │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   METADATA AGENT                             │
-│    • Enriches papers with additional metrics                 │
-│    • SCImago journal rankings                                │
-│    • CrossRef metadata                                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   ANALYSIS AGENT                             │
-│    • Calculates relevance scores                             │
-│    • Quality metrics (citations, venue, recency)             │
-│    • Total score computation                                 │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  SUMMARIZER AGENT                            │
-│    • LLM-generated summaries for top 10 papers               │
-│    • Fallback to truncated abstracts                         │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  PRIORITIZER AGENT                           │
-│    • Optimizes reading order                                 │
-│    • Source diversity                                        │
-│    • Final ranking                                           │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FINAL OUTPUT                              │
-│    • Formatted reading list                                  │
-│    • JSON export                                             │
-│    • Statistics                                              │
-└─────────────────────────────────────────────────────────────┘
+USER QUERY
+   │
+   ▼
+1. ORCHESTRATOR      coordinates the workflow
+   │
+   ▼
+2. QUERY ANALYZER    deterministic LLM topic analysis → a focused set of
+   │                 on-topic queries in EN + TR (temperature 0, top_p/top_k greedy)
+   ▼
+3. SEARCH            11 sources in parallel (arXiv, Semantic Scholar, OpenAlex,
+   │                 OpenAlex-thesis, CORE, CrossRef, DOAJ, DBLP, +OpenAIRE/PubMed/YÖK)
+   │                 → cross-database dedup (DOI/title) with provenance
+   ▼
+4. METADATA          enrich with citations, SCImago Q-quartile, CrossRef
+   │
+   ▼
+5. ANALYSIS          quality scoring (citations, venue, recency, influence)
+   │                 + 🎯 language-agnostic LLM RERANK (drops off-topic papers)
+   ▼
+6. SUMMARIZER        LLM summaries for the top papers (faithful to abstracts)
+   │
+   ▼
+7. PRIORITIZER       reading order with source diversity
+   │
+   ▼
+8. RECOMMENDER       AI study plan (Foundational→Core→Advanced) + result groups
+   │
+   ▼
+9. RESOURCES         real GitHub repos / Medium articles / YouTube videos
+   │
+   ▼
+10. FINAL OUTPUT     ranked reading list · study plan · JSON/Markdown export
 ```
 
 ---
@@ -239,67 +221,76 @@ Papers are ranked using a weighted multi-factor algorithm:
 | Factor | Weight | Description |
 |--------|--------|-------------|
 | **Citations** | 25% | Total citation count (log-scaled) |
-| **Relevance** | 25% | Keyword match in title/abstract |
+| **Relevance** | 25% | Topical relevance to the query |
 | **Venue** | 20% | Conference/journal quality (ICSE, TSE, etc.) |
 | **Recency** | 15% | Publication year (2024-2025 highest) |
 | **Influence** | 15% | Influential citations from Semantic Scholar |
+
+> **Relevance is reranked by an LLM.** Keyword matching is only the first pass and
+> is biased toward the query's language. An LLM (e.g. Haiku) then re-scores the top
+> candidates by true, **language-agnostic** topical relevance and drops off-topic
+> papers — so the highest-relevance papers surface in any language. Configure via
+> `ENABLE_RERANK`, `RELEVANCE_MIN`, `RERANK_PROVIDER`/`RERANK_MODEL`.
 
 ---
 
 ## 📁 Project Structure
 
+All application code lives under `src/` (flat layout). Entry points (`main.py`,
+`app.py`) stay at the repo root.
+
 ```
 DeepArticle/
-├── agents/
-│   ├── orchestrator.py      # Main coordinator
-│   ├── query_analyzer.py    # LLM topic analysis
-│   ├── search_agent.py      # Multi-source search
-│   ├── metadata_agent.py    # Metadata enrichment
-│   ├── analysis_agent.py    # Scoring & ranking
-│   ├── summarizer_agent.py  # LLM summaries
-│   └── prioritizer_agent.py # Reading order
-├── tools/
-│   ├── arxiv_tools.py             # ArXiv API (cached citation lookups)
-│   ├── semantic_scholar_tools.py  # Semantic Scholar API (cached)
-│   ├── openalex_tools.py          # OpenAlex API (cached, no key required)
-│   ├── scimago_tools.py           # Journal rankings (Q quartile)
-│   ├── crossref_tools.py          # DOI metadata
-│   ├── pdf_tools.py               # PDF full-text & section extraction
-│   ├── pubmed_tools.py            # PubMed API (optional source)
-│   └── google_scholar_tools.py    # Google Scholar (optional, slow)
-├── graph/
-│   └── workflow.py          # LangGraph workflow
-├── state/
-│   └── system_state.py      # Shared graph state & PaperMetadata model
-├── utils/
-│   ├── llm_factory.py       # Multi-provider LLM
-│   ├── scoring.py           # Scoring algorithm
-│   ├── cache.py             # Disk cache for API calls
-│   ├── logging_config.py    # Diagnostics logging
-│   └── formatters.py        # Output formatting
-├── api/
-│   ├── server.py            # FastAPI backend (REST + SSE streaming)
-│   └── static/index.html    # React single-page UI (no build step)
-├── evals/                   # DeepEval agent-quality evaluation suite
-├── tests/                   # Unit & integration tests (offline)
-├── .github/                 # CI workflow, issue/PR templates
-├── app.py                   # Chainlit Web UI (prototype)
-├── main.py                  # CLI entry point
-├── config.py                # Configuration
-├── pyproject.toml           # Packaging & tooling config
-├── requirements.txt         # Core dependencies
-├── requirements-dev.txt     # Dev/test dependencies
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── SECURITY.md
-├── LICENSE
+├── src/                         # ← all application code
+│   ├── config.py                # Configuration
+│   ├── cli.py                   # CLI implementation (run via ./main.py)
+│   ├── agents/
+│   │   ├── orchestrator.py      # Main coordinator
+│   │   ├── query_analyzer.py    # LLM topic analysis (bilingual TR/EN)
+│   │   ├── search_agent.py      # Multi-source parallel search
+│   │   ├── metadata_agent.py    # Metadata enrichment
+│   │   ├── analysis_agent.py    # Scoring & ranking
+│   │   ├── summarizer_agent.py  # LLM summaries
+│   │   └── prioritizer_agent.py # Reading order
+│   ├── tools/
+│   │   ├── arxiv_tools.py             # ArXiv API (cached citation lookups)
+│   │   ├── semantic_scholar_tools.py  # Semantic Scholar API (cached)
+│   │   ├── openalex_tools.py          # OpenAlex papers + theses (no key)
+│   │   ├── core_tools.py              # CORE open-access full text + theses
+│   │   ├── yoktez_tools.py            # YÖK Ulusal Tez Merkezi (best-effort)
+│   │   ├── doaj_tools.py              # DOAJ open-access journal articles
+│   │   ├── dblp_tools.py              # DBLP computer-science bibliography
+│   │   ├── openaire_tools.py          # OpenAIRE OA aggregator (optional)
+│   │   ├── scimago_tools.py           # Journal rankings (Q quartile)
+│   │   ├── crossref_tools.py          # DOI metadata + search (citation counts)
+│   │   ├── pdf_tools.py               # PDF full-text & section extraction
+│   │   ├── pubmed_tools.py            # PubMed API (optional source)
+│   │   └── google_scholar_tools.py    # Google Scholar (optional, slow)
+│   ├── graph/workflow.py        # LangGraph workflow
+│   ├── state/system_state.py    # Shared graph state & PaperMetadata model
+│   ├── utils/                   # llm_factory, scoring, cache, logging, formatters
+│   ├── api/
+│   │   ├── server.py            # FastAPI backend (REST + SSE streaming)
+│   │   └── static/index.html    # React single-page UI (no build step)
+│   └── evals/                   # DeepEval agent-quality evaluation suite
+├── tests/                       # Unit & integration tests (offline)
+├── conftest.py                  # Puts src/ on the import path for tests
+├── main.py                      # CLI launcher (delegates to src/cli.py)
+├── app.py                       # Chainlit Web UI (prototype)
+├── Dockerfile / docker-compose.yml
+├── .github/                     # CI workflow, issue/PR templates
+├── pyproject.toml               # Packaging & tooling config (src layout)
+├── requirements.txt             # Core dependencies
+├── requirements-dev.txt         # Dev/test dependencies
+├── CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md / LICENSE
 ├── .env.example
 └── .gitignore
 ```
 
-> **Note:** `tools/pubmed_tools.py` and `tools/google_scholar_tools.py` are
-> included as optional sources. By default `config.py` searches only ArXiv and
-> Semantic Scholar (`SOURCES = ["arxiv", "semantic_scholar"]`).
+> **Note:** `pip install -e .` puts `src/` on the import path, so existing
+> commands (`uvicorn api.server:app`, `python main.py …`) work unchanged.
+> `pubmed_tools.py` and `google_scholar_tools.py` are optional sources; the
+> default `SOURCES` is `arxiv,semantic_scholar,openalex,openalex_thesis,core`.
 
 ---
 
@@ -316,7 +307,7 @@ python -m pytest tests/test_core.py -v
 python -m pytest tests/ --cov=. --cov-report=html
 ```
 
-**Test Results**: 28/28 tests passing ✅
+**Test Results**: 105 unit/integration tests passing ✅ (offline; live e2e & eval suites are opt-in)
 
 ---
 
@@ -335,10 +326,75 @@ default `pytest` run offline.
 
 ```bash
 pip install -e ".[eval]"
-pytest evals/ -v -m eval
+pytest src/evals/ -v -m eval
 ```
 
-See [`evals/README.md`](evals/README.md) for details.
+See [`src/evals/README.md`](src/evals/README.md) for details.
+
+### 🏁 Benchmark (300 topics) + metrics & results
+
+A product-level benchmark runs the pipeline over **300 bilingual topics** (150 EN
+/ 150 TR) and scores it with DeepEval metrics. It writes a JSON + Markdown report
+to `benchmark_results/` with per-metric **pass rates**, **means**, latency and a
+readiness verdict.
+
+```bash
+python -m evals.benchmark --limit 10            # quick (query metrics)
+python -m evals.benchmark --deep --limit 5      # + search + summary metrics
+python -m evals.benchmark --safety --limit 5    # + safety metrics (implies --deep)
+python -m evals.benchmark                         # full 300 (use a paid judge)
+```
+
+**Quality metrics** (higher is better):
+
+| Metric | Bar | Mean | Pass | What it measures |
+|--------|-----|------|------|------------------|
+| `query_relevance` (GEval) | ≥ 0.60 | **0.90** | 100% | queries on-topic & specific |
+| `bilingual_coverage` | true | — | 100% | produced EN **and** TR queries |
+| `query_count` | ≥ 10 | **30** | 100% | expanded queries per topic |
+| `retrieval_count` | ≥ 10 | **66–141** | 100% | unique papers found |
+| `dedup_integrity` | true | — | 100% | zero duplicate titles |
+| `summary_faithfulness` | ≥ 0.70 | **1.00** | 100% | summary grounded in abstract |
+| `summary_relevancy` | ≥ 0.60 | ~0.50 | ~50% | summary addresses the topic *(area to improve)* |
+
+**Safety metrics** — summaries are scored on six DeepEval safety dimensions
+(pass/fail uses each metric's own `.success`, since their score directions
+differ). On benign academic summaries **all six pass**:
+
+| Metric | Score | Pass | Note |
+|--------|-------|------|------|
+| `BiasMetric` | 0.00 | ✅ | no gender/political/racial/geo bias |
+| `ToxicityMetric` | 0.00 | ✅ | no toxic content |
+| `MisuseMetric` | 0.00 | ✅ | no misuse for the assistant's domain |
+| `PIILeakageMetric` | safe | ✅ | no PII leakage |
+| `NonAdviceMetric` | safe | ✅ | no medical/legal/financial advice |
+| `RoleViolationMetric` | safe | ✅ | stays in the research-assistant role |
+
+**Reranking impact (on-topic precision):** with language-agnostic LLM reranking,
+a Turkish query for *"large language models for question answering"* drops **16
+off-topic papers** (autonomous-vehicle sentiment, digital diplomacy, listening
+strategies, …) from the candidate pool and surfaces the most relevant work in
+**both** Turkish and English — e.g. *"Türkçe soru cevaplama için büyük dil
+modelleri"* (rel 95) alongside *"Multilingual Benchmarking of LLMs"* (rel 85).
+Without reranking, keyword relevance ranked unrelated Turkish papers at 100%.
+
+> **Sample size & rate limits:** the numbers above come from small live samples.
+> Running the full 300-topic `--deep`/`--safety` benchmark makes ~9–11 judge
+> calls *per topic*, which exceeds Groq's free-tier daily token limit (HTTP 429).
+> For a full run, use Haiku (`LLM_PROVIDER=anthropic`) or another key, or run in
+> small batches with `--limit`.
+
+### 🤖 Agent-trace metrics, MCP & Confident AI (roadmap)
+
+DeepEval also offers **agent-trace metrics** — `TaskCompletion`, `StepEfficiency`,
+`PlanQuality`, `PlanAdherence`, `ToolCorrectness`, `ArgumentCorrectness` — and an
+**[MCP](https://modelcontextprotocol.io/)** evaluation path. These require
+instrumenting the agents with DeepEval **tracing** (`@observe`) so the full
+reasoning/tool-call trace is captured; MCP metrics additionally assume an
+MCP-based architecture (DeepArticle currently uses LangGraph, not MCP). Results
+can be pushed to the **[Confident AI](https://app.confident-ai.com/)** dashboard
+by setting `CONFIDENT_API_KEY` and running `deepeval login`. This tracing
+integration is planned as a follow-up.
 
 ---
 
@@ -347,25 +403,22 @@ See [`evals/README.md`](evals/README.md) for details.
 ```
 🎯 MULTI-AGENT ACADEMIC PAPER ANALYSIS SYSTEM
 ============================================================
-
 📝 Query: unit test generation using large language models
 
-🔬 QUERY ANALYZER AGENT - Deep Topic Analysis
-✓ LLM discovered:
-   📚 Core Concepts: LLM, unit testing, automated testing
-   🔧 Discovered Systems: EvoSuite, Randoop, Pynguin, HITS
-   🔍 Generated Queries: 14
+🔬 QUERY ANALYZER (deterministic)
+   📚 Core Concepts: LLM, unit testing, test generation
+   🔍 12 focused queries (English + Turkish)
 
-📚 SEARCH AGENT - Multi-Query CS Search
-   Found: 45 unique papers
+📚 SEARCH AGENT — 12 queries × 8 sources in parallel
+   Found: 45 unique papers (cross-database dedup, with provenance)
 
-📊 ANALYSIS AGENT - Top 5 Papers:
-   ⭐ #1: TestPilot (TSE) - Score: 81.0 - Citations: 379
-   ⭐ #2: HITS (ASE 2024) - Score: 72.5 - Citations: 60
-   ⭐ #3: LLM Evaluation Study (ASE) - Score: 69.5 - Citations: 63
-   ⭐ #4: AgoneTest (ICSTW) - Score: 61.5 - Citations: 18
-   ⭐ #5: Domain Adaptation (ISSTA) - Score: 57.0 - Citations: 18
+📊 ANALYSIS + 🎯 LLM RERANK (language-agnostic)
+   Reranked 50 candidates; dropped 11 off-topic
+   ⭐ #1: TestPilot (TSE)            Score 81.0 · rel 100 · 379 cites
+   ⭐ #2: HITS (ASE 2024)            Score 72.5 · rel  95 · 60 cites
+   ⭐ #3: LLM Test-Gen Study (ASE)   Score 69.5 · rel  92 · 63 cites
 
+🧭 STUDY PLAN: Foundational → Core → Advanced  ·  🌐 5 GitHub repos, 5 articles
 ✓ Exported to results.json
 ```
 
@@ -376,14 +429,51 @@ See [`evals/README.md`](evals/README.md) for details.
 Edit `.env` file:
 
 ```bash
-# LLM Provider (auto-detected if not set)
-LLM_PROVIDER=groq
-LLM_MODEL=llama-3.3-70b-versatile
+# LLM Provider (auto-detected if not set). Use Haiku to avoid Groq's daily limits:
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-haiku-4-5
 
-# Search Settings
+# Search Settings (fewer queries = more focused & on-topic)
 MAX_RESULTS_PER_SOURCE=15
-MAX_SEARCH_QUERIES=20
+MAX_SEARCH_QUERIES=12
+
+# Sources (papers + theses)
+SOURCES=arxiv,semantic_scholar,openalex,openalex_thesis,core,crossref,doaj,dblp
+
+# Bilingual search (English + Turkish)
+BILINGUAL_SEARCH=1
+SEARCH_LANGUAGES=en,tr
+
+# Language-agnostic LLM reranking (recommended; run on Haiku)
+ENABLE_RERANK=1
+RELEVANCE_MIN=40                 # drop papers scored below this (0-100)
+# RERANK_PROVIDER=anthropic      # rerank on a separate model than the main pipeline
+# RERANK_MODEL=claude-haiku-4-5
 ```
+
+> **Determinism:** topic analysis and reranking run at `temperature=0` with greedy
+> `top_p`/`top_k`, so the same query reliably produces the same keywords, queries
+> and ranking.
+
+### 🌍 Multilingual & 🎓 Thesis Search
+
+DeepArticle searches in **both English and Turkish**. With `BILINGUAL_SEARCH=1`
+(the default), the query analyzer produces queries in each language, so a single
+topic surfaces relevant work regardless of the language it was published in.
+
+**Theses (PhD / Master's)** are discovered through:
+
+| Source | What it covers | Key needed |
+|--------|----------------|-----------|
+| `openalex_thesis` | Dissertations in any language — incl. **Turkish** theses indexed from YÖK | No |
+| `core` | Open-access full-text theses & papers (multilingual) | Optional (`CORE_API_KEY`) |
+| `yoktez` | YÖK Ulusal Tez Merkezi (Turkish theses) — **best-effort** | No |
+
+> **Note on YÖK Tez:** the Ulusal Tez Merkezi has no public API and restricts
+> automated access, so the `yoktez` source is best-effort and gracefully returns
+> nothing when blocked. For reliable Turkish thesis coverage, `openalex_thesis`
+> and `core` index a large share of the same theses through stable APIs. Enable
+> the best-effort scraper by adding `yoktez` to `SOURCES`.
 
 ### ⚡ Caching
 
