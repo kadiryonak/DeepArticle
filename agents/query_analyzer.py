@@ -10,12 +10,37 @@ sys.path.insert(0, '..')
 
 # Use the LLM factory for multi-provider support
 from utils.llm_factory import create_llm
+from config import BILINGUAL_SEARCH
 
 
 def analyze_topic_with_llm(topic: str, llm) -> Dict[str, Any]:
     """
     Use LLM to deeply analyze the research topic and generate categorized search queries.
     """
+    bilingual_block = ""
+    queries_format = """QUERIES:
+- specific query 1
+- specific query 2
+- specific query 3
+...etc"""
+
+    if BILINGUAL_SEARCH:
+        bilingual_block = """
+## IMPORTANT: BILINGUAL OUTPUT
+The audience reads both English and Turkish. Provide search queries in BOTH
+languages so we find relevant work in either. Put English queries under QUERIES
+and the Turkish equivalents (translate the technical terms naturally, the way
+Turkish academics actually phrase them) under QUERIES_TR.
+"""
+        queries_format = """QUERIES:
+- specific English query 1
+- specific English query 2
+...etc
+QUERIES_TR:
+- spesifik Türkçe sorgu 1
+- spesifik Türkçe sorgu 2
+...vb"""
+
     prompt = f"""You are an expert researcher in Software Engineering, specifically in automated testing and AI/ML for code.
 
 RESEARCH TOPIC: "{topic}"
@@ -45,17 +70,13 @@ Create search queries that would find:
 - Comparative studies
 - State-of-the-art surveys
 - Recent advances (2023-2025)
-
+{bilingual_block}
 Format your response EXACTLY like this:
 
 CONCEPTS: concept1, concept2, concept3, concept4, concept5
 SYSTEMS: system1, system2, system3, system4, system5, system6
 CATEGORIES: category1, category2, category3, category4
-QUERIES:
-- specific query 1
-- specific query 2
-- specific query 3
-...etc
+{queries_format}
 
 Be very specific! Generic queries like "AI testing" won't find the right papers.
 Use terms that researchers actually use in paper titles."""
@@ -68,28 +89,34 @@ Use terms that researchers actually use in paper titles."""
             "concepts": [],
             "systems": [],
             "categories": [],
-            "queries": []
+            "queries": [],
+            "queries_tr": [],
         }
-        
+
         lines = content.split("\n")
-        in_queries = False
-        
+        section = None  # None | "queries" | "queries_tr"
+
         for line in lines:
             line = line.strip()
-            
+
             if line.startswith("CONCEPTS:"):
                 result["concepts"] = [k.strip() for k in line.replace("CONCEPTS:", "").split(",") if k.strip()]
+                section = None
             elif line.startswith("SYSTEMS:"):
                 result["systems"] = [s.strip() for s in line.replace("SYSTEMS:", "").split(",") if s.strip()]
+                section = None
             elif line.startswith("CATEGORIES:"):
                 result["categories"] = [c.strip() for c in line.replace("CATEGORIES:", "").split(",") if c.strip()]
+                section = None
+            elif line.startswith("QUERIES_TR:"):
+                section = "queries_tr"
             elif line.startswith("QUERIES:"):
-                in_queries = True
-            elif in_queries and line.startswith("-"):
+                section = "queries"
+            elif section and line.startswith("-"):
                 query = line.lstrip("-").strip()
                 if query and len(query) > 5:
-                    result["queries"].append(query)
-        
+                    result[section].append(query)
+
         return result
         
     except Exception as e:
@@ -104,9 +131,10 @@ def generate_search_queries(topic: str, analysis: Dict[str, Any] = None) -> List
     queries = []
     
     if analysis:
-        # 1. Use LLM-generated queries (most important)
+        # 1. Use LLM-generated queries (most important) — English then Turkish
         queries.extend(analysis.get("queries", []))
-        
+        queries.extend(analysis.get("queries_tr", []))
+
         # 2. Search for each discovered system/tool
         for system in analysis.get("systems", [])[:8]:
             if len(system) > 2:
@@ -133,7 +161,9 @@ def generate_search_queries(topic: str, analysis: Dict[str, Any] = None) -> List
             seen.add(q_clean)
             unique.append(q)
     
-    return unique[:20]  # Up to 20 queries for comprehensive coverage
+    # Allow more queries when searching bilingually (EN + TR roughly doubles them).
+    cap = 30 if BILINGUAL_SEARCH else 20
+    return unique[:cap]
 
 
 def query_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:

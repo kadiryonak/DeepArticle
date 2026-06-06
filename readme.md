@@ -17,8 +17,10 @@
 
 ## 🚀 Features
 
-- **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20+ targeted search queries
-- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar **and OpenAlex** concurrently (PubMed optional)
+- **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20-30 targeted search queries
+- **🌍 Bilingual (TR + EN)**: Generates queries in both English and Turkish to find relevant work in either language
+- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex and **CORE** concurrently (PubMed optional)
+- **🎓 Thesis Discovery**: Finds PhD/Master's theses via OpenAlex dissertations and CORE — including Turkish theses (plus best-effort YÖK Ulusal Tez Merkezi)
 - **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
 - **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI
@@ -383,7 +385,34 @@ LLM_MODEL=llama-3.3-70b-versatile
 # Search Settings
 MAX_RESULTS_PER_SOURCE=15
 MAX_SEARCH_QUERIES=20
+
+# Sources (papers + theses)
+SOURCES=arxiv,semantic_scholar,openalex,openalex_thesis,core
+
+# Bilingual search (English + Turkish)
+BILINGUAL_SEARCH=1
+SEARCH_LANGUAGES=en,tr
 ```
+
+### 🌍 Multilingual & 🎓 Thesis Search
+
+DeepArticle searches in **both English and Turkish**. With `BILINGUAL_SEARCH=1`
+(the default), the query analyzer produces queries in each language, so a single
+topic surfaces relevant work regardless of the language it was published in.
+
+**Theses (PhD / Master's)** are discovered through:
+
+| Source | What it covers | Key needed |
+|--------|----------------|-----------|
+| `openalex_thesis` | Dissertations in any language — incl. **Turkish** theses indexed from YÖK | No |
+| `core` | Open-access full-text theses & papers (multilingual) | Optional (`CORE_API_KEY`) |
+| `yoktez` | YÖK Ulusal Tez Merkezi (Turkish theses) — **best-effort** | No |
+
+> **Note on YÖK Tez:** the Ulusal Tez Merkezi has no public API and restricts
+> automated access, so the `yoktez` source is best-effort and gracefully returns
+> nothing when blocked. For reliable Turkish thesis coverage, `openalex_thesis`
+> and `core` index a large share of the same theses through stable APIs. Enable
+> the best-effort scraper by adding `yoktez` to `SOURCES`.
 
 ### ⚡ Caching
 

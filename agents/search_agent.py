@@ -13,7 +13,8 @@ sys.path.insert(0, '..')
 from config import SOURCES, SEARCH_MAX_WORKERS, SEMANTIC_SCHOLAR_QUERY_LIMIT
 from tools.arxiv_tools import search_arxiv
 from tools.semantic_scholar_tools import search_semantic_scholar
-from tools.openalex_tools import search_openalex
+from tools.openalex_tools import search_openalex, search_openalex_theses
+from tools.core_tools import search_core
 from utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -71,6 +72,40 @@ def search_pubmed_with_query(query: str, max_results: int = 15) -> List[Dict[str
     return []
 
 
+def search_openalex_theses_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    """Search OpenAlex dissertations (PhD/Master's theses) with a single query."""
+    try:
+        results = search_openalex_theses.invoke({"query": query, "max_results": max_results})
+        if results and not any("error" in r for r in results):
+            return results
+    except Exception as e:
+        logger.warning("OpenAlex thesis search failed for query %r: %s", query, e)
+    return []
+
+
+def search_core_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    """Search CORE (open-access full text + theses) with a single query."""
+    try:
+        results = search_core.invoke({"query": query, "max_results": max_results})
+        if results and not any("error" in r for r in results):
+            return results
+    except Exception as e:
+        logger.warning("CORE search failed for query %r: %s", query, e)
+    return []
+
+
+def search_yoktez_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    """Search YÖK Ulusal Tez Merkezi (Turkish theses, best-effort) with a single query."""
+    try:
+        from tools.yoktez_tools import search_yoktez
+        results = search_yoktez.invoke({"query": query, "max_results": max_results})
+        if results and not any("error" in r for r in results):
+            return results
+    except Exception as e:
+        logger.warning("YÖK Tez search failed for query %r: %s", query, e)
+    return []
+
+
 # Maps a source name to (search function, applies-to-query-index predicate).
 # Add a source to the SOURCES env var (comma-separated) to enable it.
 _SOURCE_FUNCS = {
@@ -80,7 +115,11 @@ _SOURCE_FUNCS = {
         lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT,
     ),
     "openalex": (search_openalex_with_query, lambda i: True),
+    "openalex_thesis": (search_openalex_theses_with_query, lambda i: True),
+    "core": (search_core_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
     "pubmed": (search_pubmed_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+    # YÖK Tez is fragile/rate-limited — only the first couple of queries.
+    "yoktez": (search_yoktez_with_query, lambda i: i < 2),
 }
 
 

@@ -34,6 +34,8 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 # Search API Keys
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "")
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
+# CORE (open-access aggregator) — optional; anonymous access works but is rate-limited.
+CORE_API_KEY = os.getenv("CORE_API_KEY", "")
 
 # =============================================================================
 # LLM Provider Selection
@@ -96,15 +98,38 @@ MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "20"))
 SEARCH_MAX_WORKERS = int(os.getenv("SEARCH_MAX_WORKERS", "8"))
 
 # Active sources for paper search. Configurable via the SOURCES env var
-# (comma-separated). Supported: arxiv, semantic_scholar, openalex.
+# (comma-separated). Supported:
+#   arxiv, semantic_scholar, openalex   — papers
+#   openalex_thesis                     — PhD/Master's theses (any language, incl. Turkish)
+#   core                                — open-access full text + theses (multilingual)
+#   pubmed                              — biomedical (optional)
+#   yoktez                              — YÖK Ulusal Tez Merkezi (Turkish theses, best-effort)
 SOURCES = [
     s.strip()
-    for s in os.getenv("SOURCES", "arxiv,semantic_scholar,openalex").split(",")
+    for s in os.getenv(
+        "SOURCES", "arxiv,semantic_scholar,openalex,openalex_thesis,core"
+    ).split(",")
     if s.strip()
 ]
 
 # Limit Semantic Scholar to the first N queries to avoid aggressive rate limits.
 SEMANTIC_SCHOLAR_QUERY_LIMIT = int(os.getenv("SEMANTIC_SCHOLAR_QUERY_LIMIT", "5"))
+
+# =============================================================================
+# Multilingual Search
+# =============================================================================
+
+# When enabled, the query analyzer generates search queries in both English and
+# Turkish so the system finds relevant work in either language. Disable with
+# BILINGUAL_SEARCH=0.
+BILINGUAL_SEARCH = os.getenv("BILINGUAL_SEARCH", "1").lower() not in ("0", "false", "no")
+
+# Target languages for query generation (comma-separated ISO codes).
+SEARCH_LANGUAGES = [
+    s.strip()
+    for s in os.getenv("SEARCH_LANGUAGES", "en,tr").split(",")
+    if s.strip()
+]
 
 # =============================================================================
 # Scoring Weights for Paper Ranking
