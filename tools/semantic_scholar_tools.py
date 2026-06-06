@@ -7,6 +7,10 @@ from typing import List, Dict, Any
 import requests
 from langchain_core.tools import tool
 
+import sys
+sys.path.insert(0, '..')
+from utils.cache import disk_cache
+
 
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1/paper/search"
 
@@ -17,8 +21,14 @@ def search_semantic_scholar(query: str, max_results: int = 20) -> List[Dict[str,
     Search Semantic Scholar for academic papers matching the query.
     Returns papers sorted by citation count with detailed metadata.
     """
+    return _search_semantic_scholar_cached(query, max_results)
+
+
+@disk_cache(namespace="s2_search")
+def _search_semantic_scholar_cached(query: str, max_results: int = 20) -> List[Dict[str, Any]]:
+    """Cached core of the Semantic Scholar paper search (see ``search_semantic_scholar``)."""
     papers = []
-    
+
     try:
         # Request more fields for better analysis
         fields = "paperId,title,authors,abstract,year,venue,citationCount,influentialCitationCount,externalIds,url,openAccessPdf,publicationVenue,fieldsOfStudy"

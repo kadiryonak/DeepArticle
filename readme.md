@@ -18,12 +18,15 @@
 ## 🚀 Features
 
 - **🔬 Intelligent Query Expansion**: LLM analyzes your topic and generates 20+ targeted search queries
-- **📚 Multi-Source Search**: Searches ArXiv and Semantic Scholar simultaneously
-- **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, and recency
+- **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar **and OpenAlex** concurrently (PubMed optional)
+- **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
+- **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI
 - **💡 AI Summaries**: Generates concise summaries for top papers
-- **🌐 Web UI**: Beautiful Chainlit interface for interactive exploration
-- **📄 Export**: Results exportable as JSON
+- **📄 PDF Full-Text**: Optionally extracts full text & IMRaD sections from open-access PDFs
+- **🌐 Web UI**: FastAPI backend + React SPA with **live agent-progress streaming** (plus a Chainlit prototype)
+- **🧪 Agent Evaluation**: LLM-as-judge quality checks via [DeepEval](evals/README.md)
+- **📄 Export**: Results exportable as JSON / Markdown
 
 ---
 
@@ -51,7 +54,11 @@ source venv/bin/activate
 ### 3. Install Dependencies
 
 ```bash
+# Standard install
 pip install -r requirements.txt
+
+# OR install as an editable package (recommended for development)
+pip install -e ".[dev]"
 ```
 
 ### 4. Configure API Keys
@@ -93,13 +100,60 @@ python main.py "LLM code generation" --output results.json
 python main.py --interactive
 ```
 
-### Web UI (Chainlit)
+### Web UI (FastAPI + React) — recommended
+
+A modern single-page React UI with a FastAPI backend that **streams live agent
+progress** (Server-Sent Events) as the pipeline runs. The frontend is a single
+static file (React via CDN) — no `npm`/build step required.
 
 ```bash
-# Install chainlit
-pip install chainlit
+# Install the API extra
+pip install -e ".[api]"        # or: pip install fastapi "uvicorn[standard]"
 
-# Run the web interface
+# Start the server
+uvicorn api.server:app --reload
+# or
+python -m api.server
+```
+
+Then open http://localhost:8000 in your browser. Features: live pipeline
+progress bar, ranked paper cards with score badges, filters (min citations,
+source, sort), and JSON export.
+
+**API endpoints:**
+- `GET  /api/config` — active provider, model and sources
+- `POST /api/search` — `{ "query": "..." }`, returns the ranked list
+- `GET  /api/search/stream?query=...` — SSE stream of agent progress + results
+
+### 🐳 Run with Docker (any machine, no Python setup)
+
+The easiest way to run DeepArticle on another computer — only Docker required:
+
+```bash
+# 1. Configure your keys (at minimum one LLM provider)
+cp .env.example .env        # then edit .env and add e.g. GROQ_API_KEY
+
+# 2. Build & start (FastAPI + React UI)
+docker compose up --build
+
+# 3. Open the UI
+#    http://localhost:8000
+```
+
+The API response cache is persisted in a named Docker volume (`deeparticle-cache`)
+so repeat searches stay fast across restarts. To stop: `docker compose down`.
+
+Without compose, plain Docker works too:
+
+```bash
+docker build -t deeparticle .
+docker run --rm -p 8000:8000 --env-file .env deeparticle
+```
+
+### Web UI (Chainlit) — quick chat prototype
+
+```bash
+pip install chainlit
 chainlit run app.py
 ```
 
@@ -195,7 +249,7 @@ Papers are ranked using a weighted multi-factor algorithm:
 ## 📁 Project Structure
 
 ```
-agentic_systemm/
+DeepArticle/
 ├── agents/
 │   ├── orchestrator.py      # Main coordinator
 │   ├── query_analyzer.py    # LLM topic analysis
@@ -205,29 +259,47 @@ agentic_systemm/
 │   ├── summarizer_agent.py  # LLM summaries
 │   └── prioritizer_agent.py # Reading order
 ├── tools/
-│   ├── arxiv_tools.py       # ArXiv API
-│   ├── semantic_scholar_tools.py
-│   ├── scimago_tools.py     # Journal rankings
-│   └── crossref_tools.py    # DOI metadata
+│   ├── arxiv_tools.py             # ArXiv API (cached citation lookups)
+│   ├── semantic_scholar_tools.py  # Semantic Scholar API (cached)
+│   ├── openalex_tools.py          # OpenAlex API (cached, no key required)
+│   ├── scimago_tools.py           # Journal rankings (Q quartile)
+│   ├── crossref_tools.py          # DOI metadata
+│   ├── pdf_tools.py               # PDF full-text & section extraction
+│   ├── pubmed_tools.py            # PubMed API (optional source)
+│   └── google_scholar_tools.py    # Google Scholar (optional, slow)
 ├── graph/
 │   └── workflow.py          # LangGraph workflow
+├── state/
+│   └── system_state.py      # Shared graph state & PaperMetadata model
 ├── utils/
 │   ├── llm_factory.py       # Multi-provider LLM
 │   ├── scoring.py           # Scoring algorithm
+│   ├── cache.py             # Disk cache for API calls
+│   ├── logging_config.py    # Diagnostics logging
 │   └── formatters.py        # Output formatting
-├── tests/
-│   ├── test_core.py         # Unit tests
-│   ├── test_integration.py  # Integration tests
-│   └── test_tools.py        # Tool tests
-├── docs/
-│   └── PAPER_SELECTION.md   # Scoring documentation
-├── app.py                   # Chainlit Web UI
+├── api/
+│   ├── server.py            # FastAPI backend (REST + SSE streaming)
+│   └── static/index.html    # React single-page UI (no build step)
+├── evals/                   # DeepEval agent-quality evaluation suite
+├── tests/                   # Unit & integration tests (offline)
+├── .github/                 # CI workflow, issue/PR templates
+├── app.py                   # Chainlit Web UI (prototype)
 ├── main.py                  # CLI entry point
 ├── config.py                # Configuration
-├── requirements.txt
+├── pyproject.toml           # Packaging & tooling config
+├── requirements.txt         # Core dependencies
+├── requirements-dev.txt     # Dev/test dependencies
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
+├── LICENSE
 ├── .env.example
 └── .gitignore
 ```
+
+> **Note:** `tools/pubmed_tools.py` and `tools/google_scholar_tools.py` are
+> included as optional sources. By default `config.py` searches only ArXiv and
+> Semantic Scholar (`SOURCES = ["arxiv", "semantic_scholar"]`).
 
 ---
 
@@ -245,6 +317,28 @@ python -m pytest tests/ --cov=. --cov-report=html
 ```
 
 **Test Results**: 28/28 tests passing ✅
+
+---
+
+## 🧪 Agent Evaluation (DeepEval)
+
+Beyond unit tests, the project ships an **LLM-as-judge** evaluation suite built
+on [DeepEval](https://docs.confident-ai.com/) to measure the *quality* of the
+LLM-powered agents (not just that they run):
+
+- **Query Analyzer** → `GEval` for query relevance & specificity
+- **Summarizer** → `FaithfulnessMetric` (no hallucinations) + `AnswerRelevancyMetric`
+
+The judge reuses the project's own multi-provider LLM factory, so one API key is
+enough. Evals are **skipped automatically** when no key is set, keeping the
+default `pytest` run offline.
+
+```bash
+pip install -e ".[eval]"
+pytest evals/ -v -m eval
+```
+
+See [`evals/README.md`](evals/README.md) for details.
 
 ---
 
@@ -291,6 +385,20 @@ MAX_RESULTS_PER_SOURCE=15
 MAX_SEARCH_QUERIES=20
 ```
 
+### ⚡ Caching
+
+API responses (citations, search results) are cached on disk under `.cache/`,
+so repeat searches are dramatically faster and far less likely to hit API rate
+limits. A single ArXiv query that previously fired 45+ citation lookups now
+serves them from disk on subsequent runs (~75× faster per lookup).
+
+```bash
+# Disable caching
+DEEPARTICLE_NO_CACHE=1
+# Change cache lifetime (seconds, default 7 days)
+DEEPARTICLE_CACHE_TTL=604800
+```
+
 ---
 
 ## 📄 License
@@ -301,7 +409,12 @@ MIT License - feel free to use this project for your research!
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! 🎉 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for
+development setup, the pull-request process, and style guidelines. By
+participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Good first issues: adding a new paper source (OpenAlex, DBLP, CORE), improving
+error handling/caching, or expanding test coverage.
 
 ---
 

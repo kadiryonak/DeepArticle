@@ -71,34 +71,74 @@ def calculate_impact_factor_score(impact_factor: float, max_if: float = 50.0) ->
     return min(score, 100.0)
 
 
+def calculate_venue_score(paper: Dict[str, Any]) -> float:
+    """
+    Calculate a venue-quality score (0-100) from the journal Q quartile,
+    falling back to the venue type (journal/conference) when no quartile
+    is available.
+    """
+    quartile_score = calculate_quartile_score(paper.get("q_quartile"))
+    if quartile_score > 0:
+        return quartile_score
+
+    venue_type = (paper.get("venue_type") or "").lower()
+    if venue_type == "journal":
+        return 60.0
+    if venue_type == "conference":
+        return 50.0
+    if paper.get("venue") or paper.get("journal_name"):
+        return 30.0
+    return 0.0
+
+
+def calculate_influential_score(influential_citations: int) -> float:
+    """Calculate a score (0-100) from the number of influential citations."""
+    if influential_citations > 50:
+        return 100.0
+    if influential_citations > 20:
+        return 80.0
+    if influential_citations > 10:
+        return 60.0
+    if influential_citations > 5:
+        return 40.0
+    if influential_citations > 0:
+        return 20.0
+    return 0.0
+
+
 def calculate_total_score(paper: Dict[str, Any]) -> float:
     """
     Calculate the total weighted score for a paper.
-    
+
+    Uses the weights defined in ``config.SCORING_WEIGHTS`` as the single
+    source of truth:
+    ``citation_count``, ``relevance``, ``venue_quality``, ``recency`` and
+    ``influential_citations``.
+
     Args:
         paper: Dictionary containing paper metadata
-        
+
     Returns:
         Total weighted score (0-100)
     """
     weights = SCORING_WEIGHTS
-    
+
     # Calculate individual component scores
     citation_score = calculate_citation_score(paper.get("citation_count", 0))
-    impact_score = calculate_impact_factor_score(paper.get("impact_factor", 0))
-    quartile_score = calculate_quartile_score(paper.get("q_quartile"))
+    venue_score = calculate_venue_score(paper)
     recency_score = calculate_recency_score(paper.get("published_date", ""))
     relevance_score = paper.get("relevance_score", 50.0)  # Default 50 if not set
-    
+    influential_score = calculate_influential_score(paper.get("influential_citations", 0))
+
     # Calculate weighted total
     total = (
         citation_score * weights["citation_count"] +
-        impact_score * weights["impact_factor"] +
-        quartile_score * weights["q_quartile"] +
+        relevance_score * weights["relevance"] +
+        venue_score * weights["venue_quality"] +
         recency_score * weights["recency"] +
-        relevance_score * weights["relevance"]
+        influential_score * weights["influential_citations"]
     )
-    
+
     return round(total, 2)
 
 

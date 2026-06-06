@@ -7,6 +7,13 @@ from typing import List, Dict, Any
 import requests
 from langchain_core.tools import tool
 
+import sys
+sys.path.insert(0, '..')
+from utils.logging_config import get_logger
+from utils.cache import disk_cache
+
+logger = get_logger(__name__)
+
 try:
     import arxiv
     ARXIV_AVAILABLE = True
@@ -14,6 +21,7 @@ except ImportError:
     ARXIV_AVAILABLE = False
 
 
+@disk_cache(namespace="s2_citations")
 def get_citations_from_semantic_scholar(arxiv_id: str) -> int:
     """Get citation count from Semantic Scholar using ArXiv ID."""
     try:
@@ -23,8 +31,8 @@ def get_citations_from_semantic_scholar(arxiv_id: str) -> int:
         if response.status_code == 200:
             data = response.json()
             return data.get("citationCount", 0) or 0
-    except:
-        pass
+    except Exception as e:
+        logger.debug("Citation lookup failed for arXiv:%s: %s", arxiv_id, e)
     return 0
 
 

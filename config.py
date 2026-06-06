@@ -4,7 +4,19 @@ Supports multiple LLM providers: Groq, OpenAI, Anthropic, Google.
 """
 
 import os
+import sys
 from dotenv import load_dotenv
+
+# The agents print emoji-rich progress to stdout. On consoles whose encoding
+# isn't UTF-8 (e.g. Windows cp1252/cp1254), those prints raise
+# UnicodeEncodeError and crash the pipeline. Reconfigure stdout/stderr to UTF-8
+# with a safe fallback so progress output never breaks a run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Not a reconfigurable stream (e.g. pytest capture); ignore.
+        pass
 
 # Load environment variables
 load_dotenv()
@@ -57,8 +69,8 @@ LLM_MODELS = {
         "alternatives": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"]
     },
     "anthropic": {
-        "model": "claude-3-5-sonnet-20241022",  # Balanced
-        "alternatives": ["claude-3-5-haiku-20241022", "claude-3-opus-20240229"]
+        "model": "claude-haiku-4-5",  # Fast & cost-effective
+        "alternatives": ["claude-opus-4-8", "claude-sonnet-4-6"]
     },
     "google": {
         "model": "gemini-1.5-flash",  # Fast
@@ -80,8 +92,19 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 MAX_RESULTS_PER_SOURCE = int(os.getenv("MAX_RESULTS_PER_SOURCE", "15"))
 MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "20"))
 
-# Active sources for paper search
-SOURCES = ["arxiv", "semantic_scholar"]  # Removed pubmed for CS focus
+# Number of worker threads for concurrent searching across queries/sources
+SEARCH_MAX_WORKERS = int(os.getenv("SEARCH_MAX_WORKERS", "8"))
+
+# Active sources for paper search. Configurable via the SOURCES env var
+# (comma-separated). Supported: arxiv, semantic_scholar, openalex.
+SOURCES = [
+    s.strip()
+    for s in os.getenv("SOURCES", "arxiv,semantic_scholar,openalex").split(",")
+    if s.strip()
+]
+
+# Limit Semantic Scholar to the first N queries to avoid aggressive rate limits.
+SEMANTIC_SCHOLAR_QUERY_LIMIT = int(os.getenv("SEMANTIC_SCHOLAR_QUERY_LIMIT", "5"))
 
 # =============================================================================
 # Scoring Weights for Paper Ranking

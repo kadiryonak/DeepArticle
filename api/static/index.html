@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepArticle — Academic Paper Analysis</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0b1020; }
+    .fade-in { animation: fade .4s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body class="text-slate-100">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    const EXAMPLES = [
+      "unit test generation using large language models",
+      "retrieval augmented generation for question answering",
+      "graph neural networks for drug discovery",
+    ];
+
+    function scoreColor(score) {
+      if (score >= 70) return "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+      if (score >= 50) return "bg-amber-500/20 text-amber-300 border-amber-500/40";
+      if (score >= 30) return "bg-sky-500/20 text-sky-300 border-sky-500/40";
+      return "bg-slate-500/20 text-slate-300 border-slate-500/40";
+    }
+
+    function Header({ config }) {
+      return (
+        <header className="border-b border-white/10 bg-white/5 backdrop-blur">
+          <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🎓</span>
+              <div>
+                <h1 className="text-lg font-semibold">DeepArticle</h1>
+                <p className="text-xs text-slate-400">Multi-agent academic paper analysis</p>
+              </div>
+            </div>
+            {config && (
+              <div className="text-right text-xs text-slate-400">
+                <div>Provider: <span className="text-slate-200">{config.provider || "none"}</span></div>
+                <div>Sources: <span className="text-slate-200">{(config.sources || []).join(", ")}</span></div>
+              </div>
+            )}
+          </div>
+        </header>
+      );
+    }
+
+    function SearchBar({ onSearch, busy }) {
+      const [q, setQ] = useState("");
+      return (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !busy && q.trim() && onSearch(q.trim())}
+              placeholder="Enter a research topic…"
+              className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 outline-none focus:border-sky-400/60"
+            />
+            <button
+              disabled={busy || !q.trim()}
+              onClick={() => onSearch(q.trim())}
+              className="rounded-xl px-5 py-3 font-medium bg-sky-500 hover:bg-sky-400 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              {busy ? "Searching…" : "Search"}
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLES.map((ex) => (
+              <button key={ex} disabled={busy}
+                onClick={() => { setQ(ex); onSearch(ex); }}
+                className="text-xs rounded-full px-3 py-1 bg-white/5 border border-white/10 hover:border-sky-400/50 text-slate-300 disabled:opacity-40">
+                {ex}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function Pipeline({ progress }) {
+      if (!progress) return null;
+      const pct = progress.total ? Math.round((progress.step / progress.total) * 100) : 0;
+      return (
+        <div className="fade-in rounded-xl bg-white/5 border border-white/10 p-4">
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-slate-300">⚙️ {progress.label}…</span>
+            <span className="text-slate-400">{progress.step}/{progress.total}</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: pct + "%" }} />
+          </div>
+        </div>
+      );
+    }
+
+    function TopicAnalysis({ analysis }) {
+      if (!analysis) return null;
+      const { concepts = [], systems = [] } = analysis;
+      if (!concepts.length && !systems.length) return null;
+      return (
+        <div className="rounded-xl bg-white/5 border border-white/10 p-4 text-sm">
+          <h3 className="font-medium mb-2 text-slate-200">🔬 Topic Analysis</h3>
+          {concepts.length > 0 && <p className="text-slate-400 mb-1"><b className="text-slate-300">Concepts:</b> {concepts.slice(0,6).join(", ")}</p>}
+          {systems.length > 0 && <p className="text-slate-400"><b className="text-slate-300">Related systems:</b> {systems.slice(0,8).join(", ")}</p>}
+        </div>
+      );
+    }
+
+    function PaperCard({ p, rank }) {
+      const score = p.total_score || 0;
+      const year = (p.published_date || "").slice(0, 4);
+      const venue = p.venue || p.journal_name || "";
+      const authors = (p.authors || []).slice(0, 3).join(", ") + ((p.authors || []).length > 3 ? ` +${p.authors.length - 3}` : "");
+      return (
+        <div className="fade-in rounded-xl bg-white/5 border border-white/10 p-4 hover:border-white/20 transition">
+          <div className="flex items-start gap-3">
+            <div className="text-slate-500 font-mono text-sm pt-1">#{rank}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-medium leading-snug">{p.title || "Untitled"}</h3>
+                <span className={"shrink-0 text-xs px-2 py-1 rounded-lg border " + scoreColor(score)}>
+                  {score.toFixed(1)}
+                </span>
+              </div>
+              {authors && <p className="text-xs text-slate-400 mt-1">👤 {authors}</p>}
+              <p className="text-xs text-slate-400 mt-1">
+                {year && <span>📅 {year} </span>}
+                {venue && <span>· 📰 {venue} </span>}
+                {p.q_quartile && <span className="text-emerald-300">· {p.q_quartile} </span>}
+                <span>· 📈 {p.citation_count || 0} cites</span>
+                {p.relevance_score ? <span> · 🎯 {Math.round(p.relevance_score)}%</span> : null}
+                <span className="ml-1 text-slate-500">· {p.source}</span>
+              </p>
+              {p.summary && <p className="text-sm text-slate-300 mt-2">{p.summary.slice(0, 260)}{p.summary.length > 260 ? "…" : ""}</p>}
+              <div className="flex gap-3 mt-2 text-xs">
+                {p.url && <a className="text-sky-400 hover:underline" href={p.url} target="_blank">🔗 Link</a>}
+                {p.pdf_url && p.pdf_url !== p.url && <a className="text-sky-400 hover:underline" href={p.pdf_url} target="_blank">📥 PDF</a>}
+                {p.doi && <span className="text-slate-500">DOI: {p.doi}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Results({ papers, analysis }) {
+      const [minCites, setMinCites] = useState(0);
+      const [source, setSource] = useState("all");
+      const [sortBy, setSortBy] = useState("score");
+
+      const sources = useMemo(() => ["all", ...Array.from(new Set(papers.map(p => p.source)))], [papers]);
+      const view = useMemo(() => {
+        let v = papers.filter(p => (p.citation_count || 0) >= minCites && (source === "all" || p.source === source));
+        v = [...v].sort((a, b) => sortBy === "citations"
+          ? (b.citation_count || 0) - (a.citation_count || 0)
+          : sortBy === "year"
+          ? (b.published_date || "").localeCompare(a.published_date || "")
+          : (b.total_score || 0) - (a.total_score || 0));
+        return v;
+      }, [papers, minCites, source, sortBy]);
+
+      function exportJson() {
+        const blob = new Blob([JSON.stringify(view, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "deeparticle_results.json";
+        a.click();
+      }
+
+      if (!papers.length) return null;
+      return (
+        <div className="space-y-4">
+          <TopicAnalysis analysis={analysis} />
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-slate-400">{view.length} papers</span>
+            <label className="flex items-center gap-1 text-slate-400">Min cites
+              <input type="number" min="0" value={minCites} onChange={e => setMinCites(+e.target.value || 0)}
+                className="w-20 rounded bg-white/5 border border-white/10 px-2 py-1" />
+            </label>
+            <label className="flex items-center gap-1 text-slate-400">Source
+              <select value={source} onChange={e => setSource(e.target.value)} className="rounded bg-white/5 border border-white/10 px-2 py-1">
+                {sources.map(s => <option key={s} value={s} className="bg-slate-800">{s}</option>)}
+              </select>
+            </label>
+            <label className="flex items-center gap-1 text-slate-400">Sort
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="rounded bg-white/5 border border-white/10 px-2 py-1">
+                <option value="score" className="bg-slate-800">Score</option>
+                <option value="citations" className="bg-slate-800">Citations</option>
+                <option value="year" className="bg-slate-800">Year</option>
+              </select>
+            </label>
+            <button onClick={exportJson} className="ml-auto rounded-lg px-3 py-1 bg-white/5 border border-white/10 hover:border-sky-400/50">⬇ Export JSON</button>
+          </div>
+          <div className="space-y-3">
+            {view.map((p, i) => <PaperCard key={p.paper_id || i} p={p} rank={i + 1} />)}
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [config, setConfig] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [progress, setProgress] = useState(null);
+      const [papers, setPapers] = useState([]);
+      const [analysis, setAnalysis] = useState(null);
+      const [error, setError] = useState(null);
+      const esRef = useRef(null);
+
+      useEffect(() => {
+        fetch("/api/config").then(r => r.json()).then(setConfig).catch(() => {});
+      }, []);
+
+      function search(query) {
+        setBusy(true); setError(null); setPapers([]); setAnalysis(null);
+        setProgress({ label: "Starting", step: 0, total: 8 });
+        if (esRef.current) esRef.current.close();
+
+        const es = new EventSource("/api/search/stream?query=" + encodeURIComponent(query));
+        esRef.current = es;
+        es.onmessage = (e) => {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "progress") setProgress({ label: msg.label, step: msg.step, total: msg.total });
+          else if (msg.type === "result") { setPapers(msg.papers || []); setAnalysis(msg.topic_analysis); }
+          else if (msg.type === "error") setError(msg.message);
+          else if (msg.type === "done") { setBusy(false); setProgress(null); es.close(); }
+        };
+        es.onerror = () => { setBusy(false); setProgress(null); setError("Connection lost. Is the server running?"); es.close(); };
+      }
+
+      return (
+        <div className="min-h-screen">
+          <Header config={config} />
+          <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+            <SearchBar onSearch={search} busy={busy} />
+            <Pipeline progress={progress} />
+            {error && <div className="rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 p-4 text-sm">⚠ {error}</div>}
+            {!busy && !papers.length && !error && (
+              <div className="text-center text-slate-500 py-16">
+                <p className="text-4xl mb-3">🔍</p>
+                <p>Enter a research topic to discover and rank academic papers.</p>
+              </div>
+            )}
+            <Results papers={papers} analysis={analysis} />
+          </main>
+          <footer className="text-center text-xs text-slate-600 py-8">
+            DeepArticle · open source · MIT
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

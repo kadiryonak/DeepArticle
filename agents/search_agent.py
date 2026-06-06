@@ -4,14 +4,19 @@ Enhanced with multi-query search and known systems discovery.
 """
 
 from typing import Dict, Any, List
-from langchain_core.messages import HumanMessage, AIMessage
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import tools
 import sys
 sys.path.insert(0, '..')
 
+from config import SOURCES, SEARCH_MAX_WORKERS, SEMANTIC_SCHOLAR_QUERY_LIMIT
 from tools.arxiv_tools import search_arxiv
 from tools.semantic_scholar_tools import search_semantic_scholar
+from tools.openalex_tools import search_openalex
+from utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def search_arxiv_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
@@ -20,8 +25,8 @@ def search_arxiv_with_query(query: str, max_results: int = 15) -> List[Dict[str,
         results = search_arxiv.invoke({"query": query, "max_results": max_results})
         if results and not any("error" in r for r in results):
             return results
-    except:
-        pass
+    except Exception as e:
+        logger.warning("ArXiv search failed for query %r: %s", query, e)
     return []
 
 
@@ -38,77 +43,145 @@ def search_semantic_scholar_with_query(query: str, max_results: int = 15) -> Lis
                 if not fields or fields.intersection(cs_fields):
                     filtered.append(paper)
             return filtered
-    except:
-        pass
+    except Exception as e:
+        logger.warning("Semantic Scholar search failed for query %r: %s", query, e)
     return []
+
+
+def search_openalex_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    """Search OpenAlex with a single query."""
+    try:
+        results = search_openalex.invoke({"query": query, "max_results": max_results})
+        if results and not any("error" in r for r in results):
+            return results
+    except Exception as e:
+        logger.warning("OpenAlex search failed for query %r: %s", query, e)
+    return []
+
+
+def search_pubmed_with_query(query: str, max_results: int = 15) -> List[Dict[str, Any]]:
+    """Search PubMed with a single query (optional biomedical source)."""
+    try:
+        from tools.pubmed_tools import search_pubmed
+        results = search_pubmed.invoke({"query": query, "max_results": max_results})
+        if results and not any("error" in r for r in results):
+            return results
+    except Exception as e:
+        logger.warning("PubMed search failed for query %r: %s", query, e)
+    return []
+
+
+# Maps a source name to (search function, applies-to-query-index predicate).
+# Add a source to the SOURCES env var (comma-separated) to enable it.
+_SOURCE_FUNCS = {
+    "arxiv": (search_arxiv_with_query, lambda i: True),
+    "semantic_scholar": (
+        search_semantic_scholar_with_query,
+        lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT,
+    ),
+    "openalex": (search_openalex_with_query, lambda i: True),
+    "pubmed": (search_pubmed_with_query, lambda i: i < SEMANTIC_SCHOLAR_QUERY_LIMIT),
+}
 
 
 def search_cs_sources(queries: List[str], max_results_per_query: int = 15) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Search Computer Science sources with multiple queries.
-    
+    Search the configured academic sources with multiple queries, concurrently.
+
+    Queries × sources are dispatched to a thread pool so the (network-bound)
+    searches run in parallel instead of sequentially.
+
     Args:
         queries: List of search queries
         max_results_per_query: Maximum results per query
-        
+
     Returns:
         Dictionary mapping source names to lists of papers
     """
-    all_arxiv = []
-    all_ss = []
-    
-    print(f"\n🔍 Executing {len(queries)} search queries...\n")
-    
+    results_by_source: Dict[str, List[Dict[str, Any]]] = {src: [] for src in SOURCES}
+
+    # Build the list of (source, query) tasks honoring per-source query limits.
+    tasks = []
     for i, query in enumerate(queries):
-        short_query = query[:50] + "..." if len(query) > 50 else query
-        print(f"   [{i+1}/{len(queries)}] \"{short_query}\"")
-        
-        # ArXiv search
-        arxiv_results = search_arxiv_with_query(query, max_results_per_query)
-        if arxiv_results:
-            all_arxiv.extend(arxiv_results)
-            print(f"         ArXiv: +{len(arxiv_results)} papers")
-        
-        # Semantic Scholar (limit to avoid rate limiting)
-        if i < 5:  # Only first 5 queries for Semantic Scholar
-            ss_results = search_semantic_scholar_with_query(query, max_results_per_query)
-            if ss_results:
-                all_ss.extend(ss_results)
-                print(f"         Semantic Scholar: +{len(ss_results)} papers")
-    
-    return {
-        "arxiv": all_arxiv,
-        "semantic_scholar": all_ss
-    }
+        for source in SOURCES:
+            entry = _SOURCE_FUNCS.get(source)
+            if not entry:
+                logger.warning("Unknown source %r in SOURCES; skipping", source)
+                continue
+            func, applies = entry
+            if applies(i):
+                tasks.append((source, func, query))
+
+    print(
+        f"\n🔍 Executing {len(queries)} queries across {len(SOURCES)} sources "
+        f"({len(tasks)} parallel tasks)...\n"
+    )
+
+    with ThreadPoolExecutor(max_workers=SEARCH_MAX_WORKERS) as executor:
+        future_to_meta = {
+            executor.submit(func, query, max_results_per_query): (source, query)
+            for source, func, query in tasks
+        }
+        for future in as_completed(future_to_meta):
+            source, query = future_to_meta[future]
+            try:
+                papers = future.result()
+            except Exception as e:
+                logger.warning("Search task failed (%s, %r): %s", source, query, e)
+                papers = []
+            if papers:
+                results_by_source.setdefault(source, []).extend(papers)
+                short_query = query[:45] + "..." if len(query) > 45 else query
+                print(f"   [{source}] +{len(papers)} papers  «{short_query}»")
+
+    return results_by_source
+
+
+def _dedup_key(paper: Dict[str, Any]) -> str:
+    """
+    Build a deduplication key for a paper.
+
+    Prefers the DOI (the strongest cross-source identifier); falls back to a
+    normalized title so the same work from different sources — or the
+    preprint/published versions of it — collapse into one entry.
+    """
+    doi = (paper.get("doi") or "").strip().lower()
+    if doi:
+        # Normalize common DOI URL prefixes.
+        doi = doi.replace("https://doi.org/", "").replace("http://doi.org/", "")
+        return f"doi:{doi}"
+
+    title = (paper.get("title") or "").lower().strip()
+    return "title:" + "".join(c for c in title if c.isalnum())[:80]
 
 
 def merge_papers(search_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     """
     Merge papers from all sources, removing duplicates.
-    Prioritizes papers with higher citation counts.
+
+    Deduplicates by DOI (when present) then by normalized title, keeping the
+    record with the higher citation count.
     """
-    seen_titles = {}  # title_key -> paper
-    
-    for source, papers in search_results.items():
+    seen = {}  # dedup_key -> paper
+
+    for _source, papers in search_results.items():
         for paper in papers:
-            title = paper.get("title", "").lower().strip()
-            title_key = "".join(c for c in title if c.isalnum())[:60]
-            
-            if not title_key:
+            key = _dedup_key(paper)
+            if key in ("doi:", "title:"):
                 continue
-            
+
             citations = paper.get("citation_count", 0) or 0
-            
-            if title_key not in seen_titles:
-                seen_titles[title_key] = paper
+
+            if key not in seen:
+                seen[key] = paper
             else:
-                existing_citations = seen_titles[title_key].get("citation_count", 0) or 0
+                existing_citations = seen[key].get("citation_count", 0) or 0
                 if citations > existing_citations:
-                    seen_titles[title_key] = paper
-    
+                    seen[key] = paper
+
     # Sort by citation count
-    merged = sorted(seen_titles.values(), key=lambda p: p.get("citation_count", 0) or 0, reverse=True)
-    
+    merged = sorted(seen.values(), key=lambda p: p.get("citation_count", 0) or 0, reverse=True)
+
     return merged
 
 

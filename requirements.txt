@@ -26,7 +26,9 @@ pydantic>=2.0.0               # Data validation
 python-dotenv>=1.0.0          # Environment variables
 
 # Web UI
-chainlit>=1.0.0               # Interactive chat UI
+chainlit>=1.0.0               # Interactive chat UI (legacy/quick prototype)
+fastapi>=0.110.0             # REST + SSE backend for the React UI
+uvicorn>=0.27.0              # ASGI server for FastAPI
 
 # Tracing & Monitoring
 langsmith>=0.1.0              # LangSmith tracing

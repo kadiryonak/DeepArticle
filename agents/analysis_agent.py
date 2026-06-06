@@ -9,6 +9,7 @@ import re
 import sys
 sys.path.insert(0, '..')
 
+from config import SCORING_WEIGHTS
 from utils.scoring import calculate_total_score, rank_papers
 
 
@@ -170,16 +171,16 @@ def enhanced_rank_papers(papers: List[Dict[str, Any]], query: str) -> List[Dict[
         # Calculate quality metrics
         quality = calculate_quality_score(paper)
         paper["quality_metrics"] = quality
-        
 
+        # Weights are read from config.SCORING_WEIGHTS (single source of truth)
         enhanced_score = (
-            quality["citation_score"] * 0.25 +
-            relevance * 0.25 +
-            quality["venue_score"] * 0.20 +
-            quality["recency_score"] * 0.15 +
-            quality["influential_score"] * 0.15
+            quality["citation_score"] * SCORING_WEIGHTS["citation_count"] +
+            relevance * SCORING_WEIGHTS["relevance"] +
+            quality["venue_score"] * SCORING_WEIGHTS["venue_quality"] +
+            quality["recency_score"] * SCORING_WEIGHTS["recency"] +
+            quality["influential_score"] * SCORING_WEIGHTS["influential_citations"]
         )
-        
+
         paper["total_score"] = round(enhanced_score, 2)
     
     # Sort by total score

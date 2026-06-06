@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deeparticle"
+version = "0.1.0"
+description = "A multi-agent system for discovering, analyzing, and ranking academic papers"
+readme = "readme.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Kadir Yönak", email = "kadiryonak13@gmail.com" }]
+keywords = ["llm", "langchain", "langgraph", "academic", "research", "multi-agent", "arxiv"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "langchain>=0.3.0",
+    "langgraph>=0.2.0",
+    "langchain-community>=0.3.0",
+    "arxiv>=2.1.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# LLM providers — install only the one(s) you use
+groq = ["langchain-groq>=0.1.0"]
+openai = ["langchain-openai>=0.2.0"]
+anthropic = ["langchain-anthropic>=0.2.0"]
+google = ["langchain-google-genai>=2.0.0"]
+# Extra paper sources / features
+pdf = ["PyMuPDF>=1.24.0"]
+pubmed = ["xmltodict>=0.13.0"]
+scholar = ["scholarly>=1.7.0"]
+# Web UI
+ui = ["chainlit>=1.0.0"]
+# FastAPI + React backend
+api = ["fastapi>=0.110.0", "uvicorn[standard]>=0.27.0"]
+# Tracing
+tracing = ["langsmith>=0.1.0"]
+# Development & testing
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.5.0",
+]
+# Agent evaluation (LLM-as-judge)
+eval = ["deepeval>=3.0.0"]
+# Everything
+all = [
+    "deeparticle[groq,openai,anthropic,google,pdf,pubmed,scholar,ui,api,tracing,eval]",
+]
+
+[project.urls]
+Homepage = "https://github.com/kadiryonak/DeepArticle"
+Repository = "https://github.com/kadiryonak/DeepArticle"
+Issues = "https://github.com/kadiryonak/DeepArticle/issues"
+
+[project.scripts]
+deeparticle = "main:main"
+
+[tool.setuptools]
+packages = ["agents", "tools", "utils", "graph", "state", "api", "evals"]
+py-modules = ["config", "main", "app"]
+
+[tool.setuptools.package-data]
+api = ["static/*"]
+
+[tool.pytest.ini_options]
+# Default test run stays offline & fast (unit/integration tests only).
+# Run the LLM-as-judge evaluation suite explicitly: `pytest evals/ -m eval`.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v"
+markers = [
+    "eval: LLM-as-judge evaluation tests (require an API key, make real LLM calls)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
