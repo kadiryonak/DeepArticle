@@ -37,6 +37,15 @@ SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
 # CORE (open-access aggregator) — optional; anonymous access works but is rate-limited.
 CORE_API_KEY = os.getenv("CORE_API_KEY", "")
 
+# Supplementary resources (GitHub repos, Medium articles, YouTube videos).
+# GitHub works without a token (low rate limit); add GITHUB_TOKEN for more.
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_MIN_STARS = int(os.getenv("GITHUB_MIN_STARS", "100"))
+# YouTube requires an API key; videos are simply omitted when it's not set.
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+# Master switch for the supplementary-resources step.
+ENABLE_RESOURCES = os.getenv("ENABLE_RESOURCES", "1").lower() not in ("0", "false", "no")
+
 # =============================================================================
 # LLM Provider Selection
 # =============================================================================

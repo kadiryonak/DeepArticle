@@ -21,6 +21,7 @@
 - **🌍 Bilingual (TR + EN)**: Generates queries in both English and Turkish to find relevant work in either language
 - **📚 Multi-Source Search**: Searches ArXiv, Semantic Scholar, OpenAlex, CORE, **CrossRef, DOAJ and DBLP** concurrently (OpenAIRE & PubMed optional)
 - **🎓 Thesis Discovery**: Finds PhD/Master's theses via OpenAlex dissertations and CORE — including Turkish theses (plus best-effort YÖK Ulusal Tez Merkezi)
+- **🌐 Related Resources**: Surfaces **real** GitHub projects (star-filtered), Medium articles and YouTube videos for the topic — fetched from live APIs, never AI-generated (shown only if they actually exist)
 - **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
 - **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI

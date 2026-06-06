@@ -65,6 +65,7 @@ class SystemState(TypedDict):
     summarization_completed: bool
     prioritization_completed: bool
     recommendation_completed: bool
+    resources_completed: bool
 
     # Final Results
     ranked_papers: List[dict]
@@ -74,6 +75,9 @@ class SystemState(TypedDict):
     groups: dict            # category -> list of paper_id
     reading_path: List[dict]  # ordered staged plan
     start_here: Optional[dict]
+
+    # Supplementary resources (from Resources Agent): github / articles / videos
+    resources: dict
     
     # Messages for agent communication
     messages: List[dict]
@@ -93,11 +97,13 @@ def create_initial_state(query: str) -> SystemState:
         summarization_completed=False,
         prioritization_completed=False,
         recommendation_completed=False,
+        resources_completed=False,
         ranked_papers=[],
         reading_order=[],
         groups={},
         reading_path=[],
         start_here=None,
+        resources={},
         messages=[],
         errors=[]
     )
