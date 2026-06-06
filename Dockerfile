@@ -27,6 +27,9 @@ RUN pip install -r requirements.txt
 # Copy the application source.
 COPY . .
 
+# Application code lives under src/ (flat layout) — make it importable.
+ENV PYTHONPATH=/app/src
+
 # Persisted API cache lives here (see utils/cache.py). Declared as a volume so
 # repeated searches survive container restarts.
 ENV DEEPARTICLE_CACHE_DIR=/app/.cache

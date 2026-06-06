@@ -68,11 +68,13 @@ Repository = "https://github.com/kadiryonak/DeepArticle"
 Issues = "https://github.com/kadiryonak/DeepArticle/issues"
 
 [project.scripts]
-deeparticle = "main:main"
+deeparticle = "cli:main"
 
 [tool.setuptools]
+# Source lives under src/ (flat layout: top-level modules/packages live in src).
+package-dir = { "" = "src" }
 packages = ["agents", "tools", "utils", "graph", "state", "api", "evals"]
-py-modules = ["config", "main", "app"]
+py-modules = ["config", "cli"]
 
 [tool.setuptools.package-data]
 api = ["static/*"]

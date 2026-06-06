@@ -250,58 +250,58 @@ Papers are ranked using a weighted multi-factor algorithm:
 
 ## 📁 Project Structure
 
+All application code lives under `src/` (flat layout). Entry points (`main.py`,
+`app.py`) stay at the repo root.
+
 ```
 DeepArticle/
-├── agents/
-│   ├── orchestrator.py      # Main coordinator
-│   ├── query_analyzer.py    # LLM topic analysis
-│   ├── search_agent.py      # Multi-source search
-│   ├── metadata_agent.py    # Metadata enrichment
-│   ├── analysis_agent.py    # Scoring & ranking
-│   ├── summarizer_agent.py  # LLM summaries
-│   └── prioritizer_agent.py # Reading order
-├── tools/
-│   ├── arxiv_tools.py             # ArXiv API (cached citation lookups)
-│   ├── semantic_scholar_tools.py  # Semantic Scholar API (cached)
-│   ├── openalex_tools.py          # OpenAlex API (cached, no key required)
-│   ├── scimago_tools.py           # Journal rankings (Q quartile)
-│   ├── crossref_tools.py          # DOI metadata
-│   ├── pdf_tools.py               # PDF full-text & section extraction
-│   ├── pubmed_tools.py            # PubMed API (optional source)
-│   └── google_scholar_tools.py    # Google Scholar (optional, slow)
-├── graph/
-│   └── workflow.py          # LangGraph workflow
-├── state/
-│   └── system_state.py      # Shared graph state & PaperMetadata model
-├── utils/
-│   ├── llm_factory.py       # Multi-provider LLM
-│   ├── scoring.py           # Scoring algorithm
-│   ├── cache.py             # Disk cache for API calls
-│   ├── logging_config.py    # Diagnostics logging
-│   └── formatters.py        # Output formatting
-├── api/
-│   ├── server.py            # FastAPI backend (REST + SSE streaming)
-│   └── static/index.html    # React single-page UI (no build step)
-├── evals/                   # DeepEval agent-quality evaluation suite
-├── tests/                   # Unit & integration tests (offline)
-├── .github/                 # CI workflow, issue/PR templates
-├── app.py                   # Chainlit Web UI (prototype)
-├── main.py                  # CLI entry point
-├── config.py                # Configuration
-├── pyproject.toml           # Packaging & tooling config
-├── requirements.txt         # Core dependencies
-├── requirements-dev.txt     # Dev/test dependencies
-├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
-├── SECURITY.md
-├── LICENSE
+├── src/                         # ← all application code
+│   ├── config.py                # Configuration
+│   ├── cli.py                   # CLI implementation (run via ./main.py)
+│   ├── agents/
+│   │   ├── orchestrator.py      # Main coordinator
+│   │   ├── query_analyzer.py    # LLM topic analysis (bilingual TR/EN)
+│   │   ├── search_agent.py      # Multi-source parallel search
+│   │   ├── metadata_agent.py    # Metadata enrichment
+│   │   ├── analysis_agent.py    # Scoring & ranking
+│   │   ├── summarizer_agent.py  # LLM summaries
+│   │   └── prioritizer_agent.py # Reading order
+│   ├── tools/
+│   │   ├── arxiv_tools.py             # ArXiv API (cached citation lookups)
+│   │   ├── semantic_scholar_tools.py  # Semantic Scholar API (cached)
+│   │   ├── openalex_tools.py          # OpenAlex papers + theses (no key)
+│   │   ├── core_tools.py              # CORE open-access full text + theses
+│   │   ├── yoktez_tools.py            # YÖK Ulusal Tez Merkezi (best-effort)
+│   │   ├── scimago_tools.py           # Journal rankings (Q quartile)
+│   │   ├── crossref_tools.py          # DOI metadata
+│   │   ├── pdf_tools.py               # PDF full-text & section extraction
+│   │   ├── pubmed_tools.py            # PubMed API (optional source)
+│   │   └── google_scholar_tools.py    # Google Scholar (optional, slow)
+│   ├── graph/workflow.py        # LangGraph workflow
+│   ├── state/system_state.py    # Shared graph state & PaperMetadata model
+│   ├── utils/                   # llm_factory, scoring, cache, logging, formatters
+│   ├── api/
+│   │   ├── server.py            # FastAPI backend (REST + SSE streaming)
+│   │   └── static/index.html    # React single-page UI (no build step)
+│   └── evals/                   # DeepEval agent-quality evaluation suite
+├── tests/                       # Unit & integration tests (offline)
+├── conftest.py                  # Puts src/ on the import path for tests
+├── main.py                      # CLI launcher (delegates to src/cli.py)
+├── app.py                       # Chainlit Web UI (prototype)
+├── Dockerfile / docker-compose.yml
+├── .github/                     # CI workflow, issue/PR templates
+├── pyproject.toml               # Packaging & tooling config (src layout)
+├── requirements.txt             # Core dependencies
+├── requirements-dev.txt         # Dev/test dependencies
+├── CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md / LICENSE
 ├── .env.example
 └── .gitignore
 ```
 
-> **Note:** `tools/pubmed_tools.py` and `tools/google_scholar_tools.py` are
-> included as optional sources. By default `config.py` searches only ArXiv and
-> Semantic Scholar (`SOURCES = ["arxiv", "semantic_scholar"]`).
+> **Note:** `pip install -e .` puts `src/` on the import path, so existing
+> commands (`uvicorn api.server:app`, `python main.py …`) work unchanged.
+> `pubmed_tools.py` and `google_scholar_tools.py` are optional sources; the
+> default `SOURCES` is `arxiv,semantic_scholar,openalex,openalex_thesis,core`.
 
 ---
 
@@ -337,10 +337,10 @@ default `pytest` run offline.
 
 ```bash
 pip install -e ".[eval]"
-pytest evals/ -v -m eval
+pytest src/evals/ -v -m eval
 ```
 
-See [`evals/README.md`](evals/README.md) for details.
+See [`src/evals/README.md`](src/evals/README.md) for details.
 
 ---
 
