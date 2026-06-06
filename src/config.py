@@ -132,6 +132,24 @@ SOURCES = [
 SEMANTIC_SCHOLAR_QUERY_LIMIT = int(os.getenv("SEMANTIC_SCHOLAR_QUERY_LIMIT", "5"))
 
 # =============================================================================
+# LLM Reranking (language-agnostic relevance)
+# =============================================================================
+# Keyword relevance is language-biased (a Turkish query only matches Turkish
+# papers). When enabled, an LLM re-scores the top candidates by how relevant they
+# really are to the topic — regardless of language — and off-topic papers are
+# dropped. Set the judge to Haiku via LLM_PROVIDER=anthropic for cheap reranking.
+ENABLE_RERANK = os.getenv("ENABLE_RERANK", "1").lower() not in ("0", "false", "no")
+# How many top candidates to rerank with the LLM.
+RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "50"))
+# Drop papers whose reranked relevance falls below this (0-100). 0 = keep all.
+RELEVANCE_MIN = int(os.getenv("RELEVANCE_MIN", "40"))
+# Optionally run reranking on a different (e.g. cheaper/separate-quota) model than
+# the main pipeline — handy to rerank with Haiku while summarizing with Groq.
+# Leave empty to use the main LLM_PROVIDER/LLM_MODEL.
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "")
+
+# =============================================================================
 # Multilingual Search
 # =============================================================================
 

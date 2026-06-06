@@ -24,6 +24,7 @@
 - **🌐 Related Resources**: Surfaces **real** GitHub projects (star-filtered), Medium articles and YouTube videos for the topic — fetched from live APIs, never AI-generated (shown only if they actually exist)
 - **⚡ Parallel & Cached**: Queries run in a thread pool and API responses are cached on disk (≈75× faster repeat lookups, fewer rate-limit errors)
 - **📊 Smart Ranking**: Papers scored by citations, relevance, venue quality, recency and influential citations
+- **🎯 LLM Reranking (language-agnostic)**: An LLM (e.g. Haiku) re-scores the top candidates by true topical relevance — *independent of language* — and drops off-topic papers, so a Turkish query surfaces the most relevant papers in **any** language, not just Turkish ones
 - **🤖 Multi-LLM Support**: Works with Groq, OpenAI, Anthropic, or Google AI
 - **💡 AI Summaries**: Generates concise summaries for top papers
 - **📄 PDF Full-Text**: Optionally extracts full text & IMRaD sections from open-access PDFs

@@ -9,8 +9,10 @@ import re
 import sys
 sys.path.insert(0, '..')
 
-from config import SCORING_WEIGHTS
+from config import SCORING_WEIGHTS, ENABLE_RERANK, RERANK_PROVIDER, RERANK_MODEL
 from utils.scoring import calculate_total_score, rank_papers
+from utils.llm_factory import create_llm
+from agents.reranker import llm_rerank
 
 
 def calculate_topic_relevance(paper: Dict[str, Any], query: str) -> float:
@@ -210,9 +212,21 @@ def analysis_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     print(f"Analyzing {len(papers)} papers for query: '{query}'...\n")
     
-    # Enhanced ranking with topic relevance
+    # Enhanced ranking with (keyword) topic relevance + quality metrics
     ranked = enhanced_rank_papers(papers, query)
-    
+
+    # Language-agnostic LLM reranking: re-score relevance regardless of language
+    # and drop off-topic papers (keyword relevance favours the query's language).
+    if ENABLE_RERANK:
+        rerank_llm = create_llm(
+            provider=RERANK_PROVIDER or None,
+            model=RERANK_MODEL or None,
+            temperature=0.0,
+        )
+        if rerank_llm is not None:
+            print("\n🎯 Reranking by language-agnostic relevance (LLM)...")
+            ranked = llm_rerank(query, ranked, rerank_llm)
+
     # Print top 10 with detailed metrics
     print("Top 10 Papers by Quality Score:")
 
