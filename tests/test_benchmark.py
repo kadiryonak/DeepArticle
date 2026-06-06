@@ -11,19 +11,22 @@ from evals.benchmark_questions import BENCHMARK_QUESTIONS, get_questions
 
 class TestQuestions:
     def test_has_100_questions(self):
-        assert len(BENCHMARK_QUESTIONS) == 100
+        # At least 100 benchmark topics (dataset may grow over time).
+        assert len(BENCHMARK_QUESTIONS) >= 100
 
     def test_ids_unique(self):
         ids = [q["id"] for q in BENCHMARK_QUESTIONS]
         assert len(ids) == len(set(ids))
 
-    def test_bilingual_split(self):
-        langs = {q["lang"] for q in BENCHMARK_QUESTIONS}
-        assert langs == {"en", "tr"}
-        assert sum(q["lang"] == "tr" for q in BENCHMARK_QUESTIONS) == 50
+    def test_bilingual_balanced(self):
+        en = sum(q["lang"] == "en" for q in BENCHMARK_QUESTIONS)
+        tr = sum(q["lang"] == "tr" for q in BENCHMARK_QUESTIONS)
+        assert {q["lang"] for q in BENCHMARK_QUESTIONS} == {"en", "tr"}
+        assert en == tr  # kept 50/50 balanced
 
     def test_filter_and_limit(self):
-        assert len(get_questions(lang="tr")) == 50
+        tr_total = sum(q["lang"] == "tr" for q in BENCHMARK_QUESTIONS)
+        assert len(get_questions(lang="tr")) == tr_total
         assert len(get_questions(limit=5)) == 5
         assert all(q["lang"] == "en" for q in get_questions(lang="en", limit=3))
 

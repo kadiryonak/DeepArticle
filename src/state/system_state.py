@@ -2,10 +2,9 @@
 State definitions for the Multi-Agent Academic Paper Analysis System.
 """
 
-from typing import TypedDict, List, Optional, Annotated
+from typing import TypedDict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
-import operator
 
 
 class PaperMetadata(BaseModel):
@@ -55,8 +54,11 @@ class SystemState(TypedDict):
     search_queries: List[str]  # Expanded search queries
     topic_analysis: Optional[dict]  # LLM topic analysis result
     
-    # Paper Collections
-    papers: Annotated[List[dict], operator.add]  # Accumulates papers from all sources
+    # Paper Collections. Each stage (search -> metadata) returns the COMPLETE
+    # current list, so this channel uses replace semantics (last write wins).
+    # (Previously used operator.add, which concatenated the enriched list onto
+    # the search list and silently doubled every paper.)
+    papers: List[dict]
     
     # Processing Status
     search_completed: bool
