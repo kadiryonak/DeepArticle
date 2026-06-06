@@ -21,12 +21,18 @@ Deep (``--deep``, adds live search + a summary per topic):
   * summary_relevancy   — AnswerRelevancyMetric: summary addresses the
                           topic.                                       [≥ 0.60]
 
+Safety (``--safety``, implies ``--deep``; scores the generated summary):
+  * bias, toxicity, pii_leakage, misuse, non_advice, role_violation — DeepEval
+    safety metrics. Score directions differ, so pass/fail uses each metric's
+    own ``.success`` flag.
+
 Usage
 -----
     python -m evals.benchmark --limit 10              # quick shallow run
     python -m evals.benchmark --lang tr --limit 20    # Turkish subset
-    python -m evals.benchmark --deep --limit 5        # full (slower) run
-    python -m evals.benchmark                          # all 100 (expensive)
+    python -m evals.benchmark --deep --limit 5        # + search + summary metrics
+    python -m evals.benchmark --safety --limit 5      # + safety metrics
+    python -m evals.benchmark                          # all topics (use a paid judge)
 """
 
 import argparse
@@ -44,7 +50,7 @@ from utils.llm_factory import create_llm
 from evals.benchmark_questions import get_questions
 from evals.eval_model import get_eval_model
 
-# Metric thresholds — the bar for "production quality".
+# Quality metric thresholds — higher is better (pass when score >= threshold).
 THRESHOLDS = {
     "query_relevance": 0.60,
     "query_count": 10,
@@ -52,6 +58,15 @@ THRESHOLDS = {
     "summary_faithfulness": 0.70,
     "summary_relevancy": 0.60,
 }
+
+# Safety metrics scored on the generated summaries. Pass/fail comes from each
+# deepeval metric's own ``.success`` (their score directions differ), so we keep
+# only the set of names here for grouping/reporting.
+SAFETY_METRICS = {
+    "bias", "toxicity", "pii_leakage", "misuse", "non_advice", "role_violation",
+}
+
+_AGENT_ROLE = "academic research assistant"
 
 _REPORT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -103,7 +118,43 @@ def _score_summary(topic: str, summary: str, abstract: str, judge) -> Dict[str, 
     return {"summary_faithfulness": float(faith.score), "summary_relevancy": float(relev.score)}
 
 
-def run_one(item: Dict[str, str], llm, judge, deep: bool) -> Dict[str, Any]:
+def _score_safety(topic: str, summary: str, judge) -> Dict[str, Dict[str, Any]]:
+    """
+    Safety evaluation of a generated summary across six dimensions.
+
+    These deepeval metrics use mixed score directions (e.g. Bias: lower is safer;
+    PIILeakage: higher is safer), so we rely on each metric's own ``.success``
+    flag for pass/fail rather than imposing a direction. Returns
+    ``{name: {"score": float, "success": bool}}``. Run defensively per-metric.
+    """
+    from deepeval.test_case import LLMTestCase
+    from deepeval.metrics import (
+        BiasMetric, ToxicityMetric, PIILeakageMetric,
+        MisuseMetric, NonAdviceMetric, RoleViolationMetric,
+    )
+
+    tc = LLMTestCase(input=topic, actual_output=summary)
+    builders = {
+        "bias": lambda: BiasMetric(model=judge),
+        "toxicity": lambda: ToxicityMetric(model=judge),
+        "pii_leakage": lambda: PIILeakageMetric(model=judge),
+        "misuse": lambda: MisuseMetric(domain=_AGENT_ROLE, model=judge),
+        "non_advice": lambda: NonAdviceMetric(
+            advice_types=["medical", "legal", "financial"], model=judge),
+        "role_violation": lambda: RoleViolationMetric(role=_AGENT_ROLE, model=judge),
+    }
+    out: Dict[str, Dict[str, Any]] = {}
+    for name, build in builders.items():
+        try:
+            metric = build()
+            metric.measure(tc)
+            out[name] = {"score": float(metric.score), "success": bool(metric.success)}
+        except Exception as e:
+            logger.warning("Safety metric %s failed: %s", name, e)
+    return out
+
+
+def run_one(item: Dict[str, str], llm, judge, deep: bool, safety: bool = False) -> Dict[str, Any]:
     """Run + score a single benchmark topic. Never raises; records errors."""
     topic = item["query"]
     rec: Dict[str, Any] = {"id": item["id"], "lang": item["lang"], "domain": item["domain"],
@@ -140,6 +191,10 @@ def run_one(item: Dict[str, str], llm, judge, deep: bool) -> Dict[str, Any]:
                 rec["metrics"].update(
                     _score_summary(topic, summary, top.get("abstract", ""), judge)
                 )
+                if safety:
+                    for name, res in _score_safety(topic, summary, judge).items():
+                        rec["metrics"][name] = res["score"]
+                        rec.setdefault("passes", {})[name] = res["success"]
     except Exception as e:  # keep the benchmark robust over 100 topics
         rec["error"] = f"{type(e).__name__}: {e}"
 
@@ -153,8 +208,10 @@ def _passed(name: str, value: Any) -> Optional[bool]:
         return None
     if name in ("bilingual_coverage", "dedup_integrity"):
         return bool(value)
-    if name in THRESHOLDS:
+    if name in THRESHOLDS:          # higher is better
         return value >= THRESHOLDS[name]
+    # Safety metrics are judged by deepeval's own .success (mixed directions),
+    # stored per-record in aggregate(); no manual threshold here.
     return None
 
 
@@ -163,16 +220,24 @@ def aggregate(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     metric_names = [
         "query_relevance", "bilingual_coverage", "query_count",
         "retrieval_count", "dedup_integrity", "summary_faithfulness", "summary_relevancy",
+        "bias", "toxicity", "pii_leakage", "misuse", "non_advice", "role_violation",
     ]
     summary: Dict[str, Any] = {"n": len(records), "errors": sum(1 for r in records if r["error"])}
     per_metric: Dict[str, Any] = {}
 
     for name in metric_names:
-        values = [r["metrics"].get(name) for r in records if r["metrics"].get(name) is not None]
-        if not values:
+        recs_with = [r for r in records if r["metrics"].get(name) is not None]
+        if not recs_with:
             continue
-        passes = [_passed(name, v) for v in values]
-        passes = [p for p in passes if p is not None]
+        values = [r["metrics"][name] for r in recs_with]
+        passes = []
+        for r in recs_with:
+            if name in r.get("passes", {}):          # deepeval's own .success
+                passes.append(bool(r["passes"][name]))
+            else:
+                p = _passed(name, r["metrics"][name])
+                if p is not None:
+                    passes.append(p)
         numeric = [float(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
         per_metric[name] = {
             "n": len(values),
@@ -225,10 +290,24 @@ def to_markdown(summary: Dict[str, Any], meta: Dict[str, Any]) -> str:
         "retrieval_count": "≥ 10", "dedup_integrity": "= true",
         "summary_faithfulness": "≥ 0.70", "summary_relevancy": "≥ 0.60",
     }
-    for name, m in summary.get("metrics", {}).items():
+    quality = [n for n in summary.get("metrics", {}) if n not in SAFETY_METRICS]
+    safety = [n for n in summary.get("metrics", {}) if n in SAFETY_METRICS]
+
+    def _row(name):
+        m = summary["metrics"][name]
         mean = "—" if m["mean"] is None else f"{m['mean']:.3f}"
         pr = "—" if m["pass_rate"] is None else f"{m['pass_rate']*100:.0f}%"
-        lines.append(f"| {name} | {bars.get(name, '')} | {m['n']} | {mean} | {pr} |")
+        bar = bars.get(name, "deepeval .success")
+        return f"| {name} | {bar} | {m['n']} | {mean} | {pr} |"
+
+    for name in quality:
+        lines.append(_row(name))
+    if safety:
+        lines += ["", "## Safety (lower is better)", "",
+                  "| Metric | Bar | N | Mean | Pass rate |",
+                  "|--------|-----|---|------|-----------|"]
+        for name in safety:
+            lines.append(_row(name))
 
     if "latency" in summary:
         lat = summary["latency"]
@@ -242,8 +321,11 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="cap number of topics (0 = all)")
     parser.add_argument("--lang", default="all", choices=["all", "en", "tr"], help="language subset")
     parser.add_argument("--deep", action="store_true", help="also run search + summary metrics (slower)")
+    parser.add_argument("--safety", action="store_true",
+                        help="also score summaries with safety metrics (bias, toxicity, PII, ...); implies --deep")
     parser.add_argument("--out", default=_REPORT_DIR, help="output directory for reports")
     args = parser.parse_args()
+    deep = args.deep or args.safety  # safety needs a generated summary
 
     llm = create_llm()
     judge = get_eval_model()
@@ -252,12 +334,12 @@ def main():
         sys.exit(1)
 
     questions = get_questions(lang=args.lang, limit=args.limit)
-    mode = "deep" if args.deep else "shallow"
+    mode = ("deep+safety" if args.safety else "deep") if deep else "shallow"
     print(f"\n🏁 Benchmarking {len(questions)} topics ({args.lang}, {mode} mode)...\n")
 
     records: List[Dict[str, Any]] = []
     for i, item in enumerate(questions, 1):
-        rec = run_one(item, llm, judge, args.deep)
+        rec = run_one(item, llm, judge, deep, safety=args.safety)
         records.append(rec)
         flag = "✗" if rec["error"] else "✓"
         qr = rec["metrics"].get("query_relevance")

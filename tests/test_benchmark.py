@@ -71,6 +71,19 @@ class TestAggregate:
         s = bm.aggregate(self._records())
         assert "latency" in s and s["latency"]["max"] == 4.0
 
+    def test_safety_pass_uses_stored_success(self):
+        # PII score 1.0 would look like a fail under a naive lower-is-better rule,
+        # but the stored success (deepeval's own) marks it as passing.
+        records = [
+            {"id": "a", "error": None, "latency_s": 1.0,
+             "metrics": {"pii_leakage": 1.0, "bias": 0.0},
+             "passes": {"pii_leakage": True, "bias": True}},
+        ]
+        s = bm.aggregate(records)
+        assert s["metrics"]["pii_leakage"]["pass_rate"] == 1.0
+        assert s["metrics"]["pii_leakage"]["mean"] == 1.0
+        assert s["metrics"]["bias"]["pass_rate"] == 1.0
+
 
 class TestVerdictAndReport:
     def test_verdict_thresholds(self):

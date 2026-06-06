@@ -22,13 +22,19 @@ def resources_node(state: Dict[str, Any]) -> Dict[str, Any]:
     if not ENABLE_RESOURCES:
         return {"resources": dict(_EMPTY), "resources_completed": True}
 
+    # GitHub/YouTube/Medium have far better coverage for English queries, so for
+    # a Turkish topic prefer an English query produced by the query analyzer.
     topic = state.get("query", "")
+    analysis = state.get("topic_analysis") or {}
+    english_queries = analysis.get("queries") or []
+    search_topic = (english_queries[0] if english_queries else topic).strip().strip('"').strip()
+
     print("\n" + "=" * 50)
     print("🌐 RESOURCES AGENT - GitHub / Medium / YouTube")
     print("=" * 50)
 
     try:
-        resources = gather_resources(topic)
+        resources = gather_resources(search_topic)
     except Exception as e:  # never break the pipeline for supplementary data
         logger.warning("Resource gathering failed: %s", e)
         resources = dict(_EMPTY)

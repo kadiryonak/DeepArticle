@@ -123,6 +123,14 @@ Then open http://localhost:8000 in your browser. Features: live pipeline
 progress bar, ranked paper cards with score badges, filters (min citations,
 source, sort), and JSON export.
 
+**Live search & topic analysis** (with the 🇹🇷/🇬🇧 language toggle):
+
+![Live search and pipeline progress](images/TopicAnalyses.png)
+
+**AI study plan, result groups and related resources:**
+
+![Study plan, groups and resources](images/StudyPlan.png)
+
 **API endpoints:**
 - `GET  /api/config` — active provider, model and sources
 - `POST /api/search` — `{ "query": "..." }`, returns the ranked list
@@ -345,6 +353,63 @@ pytest src/evals/ -v -m eval
 ```
 
 See [`src/evals/README.md`](src/evals/README.md) for details.
+
+### 🏁 Benchmark (300 topics) + metrics & results
+
+A product-level benchmark runs the pipeline over **300 bilingual topics** (150 EN
+/ 150 TR) and scores it with DeepEval metrics. It writes a JSON + Markdown report
+to `benchmark_results/` with per-metric **pass rates**, **means**, latency and a
+readiness verdict.
+
+```bash
+python -m evals.benchmark --limit 10            # quick (query metrics)
+python -m evals.benchmark --deep --limit 5      # + search + summary metrics
+python -m evals.benchmark --safety --limit 5    # + safety metrics (implies --deep)
+python -m evals.benchmark                         # full 300 (use a paid judge)
+```
+
+**Quality metrics** (higher is better):
+
+| Metric | Bar | Mean | Pass | What it measures |
+|--------|-----|------|------|------------------|
+| `query_relevance` (GEval) | ≥ 0.60 | **0.90** | 100% | queries on-topic & specific |
+| `bilingual_coverage` | true | — | 100% | produced EN **and** TR queries |
+| `query_count` | ≥ 10 | **30** | 100% | expanded queries per topic |
+| `retrieval_count` | ≥ 10 | **66–141** | 100% | unique papers found |
+| `dedup_integrity` | true | — | 100% | zero duplicate titles |
+| `summary_faithfulness` | ≥ 0.70 | **1.00** | 100% | summary grounded in abstract |
+| `summary_relevancy` | ≥ 0.60 | ~0.50 | ~50% | summary addresses the topic *(area to improve)* |
+
+**Safety metrics** — summaries are scored on six DeepEval safety dimensions
+(pass/fail uses each metric's own `.success`, since their score directions
+differ). On benign academic summaries **all six pass**:
+
+| Metric | Score | Pass | Note |
+|--------|-------|------|------|
+| `BiasMetric` | 0.00 | ✅ | no gender/political/racial/geo bias |
+| `ToxicityMetric` | 0.00 | ✅ | no toxic content |
+| `MisuseMetric` | 0.00 | ✅ | no misuse for the assistant's domain |
+| `PIILeakageMetric` | safe | ✅ | no PII leakage |
+| `NonAdviceMetric` | safe | ✅ | no medical/legal/financial advice |
+| `RoleViolationMetric` | safe | ✅ | stays in the research-assistant role |
+
+> **Sample size & rate limits:** the numbers above come from small live samples.
+> Running the full 300-topic `--deep`/`--safety` benchmark makes ~9–11 judge
+> calls *per topic*, which exceeds Groq's free-tier rate limit (HTTP 429). For a
+> full run, use a higher-tier key or a different judge (`LLM_MODEL` /
+> `LLM_PROVIDER`), or run in small batches with `--limit`.
+
+### 🤖 Agent-trace metrics, MCP & Confident AI (roadmap)
+
+DeepEval also offers **agent-trace metrics** — `TaskCompletion`, `StepEfficiency`,
+`PlanQuality`, `PlanAdherence`, `ToolCorrectness`, `ArgumentCorrectness` — and an
+**[MCP](https://modelcontextprotocol.io/)** evaluation path. These require
+instrumenting the agents with DeepEval **tracing** (`@observe`) so the full
+reasoning/tool-call trace is captured; MCP metrics additionally assume an
+MCP-based architecture (DeepArticle currently uses LangGraph, not MCP). Results
+can be pushed to the **[Confident AI](https://app.confident-ai.com/)** dashboard
+by setting `CONFIDENT_API_KEY` and running `deepeval login`. This tracing
+integration is planned as a follow-up.
 
 ---
 

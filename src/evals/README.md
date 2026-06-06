@@ -40,9 +40,25 @@ For a product-level quality report across many topics, run the benchmark over th
 ```bash
 python -m evals.benchmark --limit 10            # quick shallow run (query metrics)
 python -m evals.benchmark --lang tr --limit 20  # Turkish subset
-python -m evals.benchmark --deep --limit 5      # full run (adds search + summary)
-python -m evals.benchmark                        # all 100 (expensive)
+python -m evals.benchmark --deep --limit 5      # adds search + summary metrics
+python -m evals.benchmark --safety --limit 5    # adds safety metrics (implies --deep)
+python -m evals.benchmark                        # all topics (use a paid judge)
 ```
+
+With `--safety`, generated summaries are also scored on six DeepEval safety
+metrics — `BiasMetric`, `ToxicityMetric`, `PIILeakageMetric`, `MisuseMetric`,
+`NonAdviceMetric`, `RoleViolationMetric`. Their score directions differ, so
+pass/fail uses each metric's own `.success` rather than a fixed threshold.
+
+> Each topic in `--deep`/`--safety` mode makes ~9–11 judge calls; the Groq
+> free tier rate-limits (HTTP 429) on large runs. Use `--limit`, a higher-tier
+> key, or a different judge (`LLM_PROVIDER`/`LLM_MODEL`) for the full set.
+
+**Agent-trace metrics** (`TaskCompletion`, `StepEfficiency`, `PlanQuality`,
+`PlanAdherence`, `ToolCorrectness`, `ArgumentCorrectness`) and **MCP** evaluation
+need DeepEval tracing (`@observe`) instrumentation of the agents; results can be
+pushed to [Confident AI](https://app.confident-ai.com/) via `CONFIDENT_API_KEY`.
+This is planned as a follow-up.
 
 It writes a timestamped JSON + Markdown report to `benchmark_results/` and prints
 a summary table with per-metric **pass rates**, **means**, **latency** percentiles
