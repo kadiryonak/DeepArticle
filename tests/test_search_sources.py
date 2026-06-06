@@ -102,3 +102,37 @@ class TestMergeProvenance:
         merged = sa.merge_papers(results)
         assert len(merged) == 2
         assert all(len(p["found_in"]) == 1 for p in merged)
+
+    def test_doi_and_missing_doi_same_title_merge(self):
+        """Regression: a DOI record and a no-DOI record of the same work merge."""
+        results = {
+            "openalex": [{"title": "Attention Is All You Need", "doi": "10.5/abc",
+                          "citation_count": 50, "url": "o"}],
+            "arxiv": [{"title": "Attention Is All You Need",  # no DOI
+                       "citation_count": 40, "url": "a"}],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 1
+        assert set(merged[0]["found_in"]) == {"openalex", "arxiv"}
+
+    def test_two_different_dois_same_title_merge(self):
+        """Preprint vs published: different DOIs, same title -> one entry."""
+        results = {
+            "core": [{"title": "Deep Residual Learning for Image Recognition",
+                      "doi": "10.1/preprint", "citation_count": 10, "url": "c"}],
+            "openalex": [{"title": "Deep Residual Learning for Image Recognition",
+                          "doi": "10.2/published", "citation_count": 99, "url": "o"}],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 1
+        assert merged[0]["citation_count"] == 99
+        assert len(merged[0]["found_in"]) == 2
+
+    def test_short_generic_titles_not_over_merged(self):
+        """Very short titles without DOIs are NOT merged (too generic)."""
+        results = {
+            "arxiv": [{"title": "Survey", "citation_count": 1, "url": "a"}],
+            "core": [{"title": "Survey", "citation_count": 2, "url": "b"}],
+        }
+        merged = sa.merge_papers(results)
+        assert len(merged) == 2

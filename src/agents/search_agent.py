@@ -176,22 +176,20 @@ def search_cs_sources(queries: List[str], max_results_per_query: int = 15) -> Di
     return results_by_source
 
 
-def _dedup_key(paper: Dict[str, Any]) -> str:
-    """
-    Build a deduplication key for a paper.
-
-    Prefers the DOI (the strongest cross-source identifier); falls back to a
-    normalized title so the same work from different sources — or the
-    preprint/published versions of it — collapse into one entry.
-    """
+def _norm_doi(paper: Dict[str, Any]) -> str:
+    """Normalized DOI (lowercased, URL prefix stripped), or '' if none."""
     doi = (paper.get("doi") or "").strip().lower()
-    if doi:
-        # Normalize common DOI URL prefixes.
-        doi = doi.replace("https://doi.org/", "").replace("http://doi.org/", "")
-        return f"doi:{doi}"
+    return doi.replace("https://doi.org/", "").replace("http://doi.org/", "")
 
-    title = (paper.get("title") or "").lower().strip()
-    return "title:" + "".join(c for c in title if c.isalnum())[:80]
+
+def _norm_title(paper: Dict[str, Any]) -> str:
+    """Normalized title: lowercased, only alphanumerics (for fuzzy matching)."""
+    return "".join(c for c in (paper.get("title") or "").lower() if c.isalnum())
+
+
+# Titles shorter than this (normalized length) aren't trusted for title-based
+# dedup — too generic (e.g. "Survey", "Overview") and could collide unrelated work.
+_MIN_TITLE_LEN = 8
 
 
 def _add_provenance(paper: Dict[str, Any], source: str) -> None:
@@ -246,30 +244,51 @@ def merge_papers(search_results: Dict[str, List[Dict[str, Any]]]) -> List[Dict[s
     """
     Merge papers from all sources, removing duplicates.
 
-    Deduplicates by DOI (when present) then by normalized title. A work found in
-    multiple databases becomes a single entry whose ``found_in`` lists every
-    source and whose ``source_links`` holds each database's link — so nothing is
-    shown twice, but every link is preserved.
+    A work is matched by DOI **or** normalized title, so the same paper collapses
+    into one entry even when sources disagree on identifiers (e.g. one has a DOI
+    and another doesn't, or a preprint and the published version carry different
+    DOIs). The surviving entry's ``found_in`` lists every database it appeared in
+    and ``source_links`` holds each database's link — nothing is shown twice, but
+    every link is preserved.
     """
-    seen: Dict[str, Dict[str, Any]] = {}  # dedup_key -> paper
+    entries: List[Dict[str, Any]] = []
+    by_doi: Dict[str, Dict[str, Any]] = {}
+    by_title: Dict[str, Dict[str, Any]] = {}
 
     for source, papers in search_results.items():
         for paper in papers:
-            key = _dedup_key(paper)
-            if key in ("doi:", "title:"):
-                continue
+            doi = _norm_doi(paper)
+            title = _norm_title(paper)
+            title_usable = len(title) >= _MIN_TITLE_LEN
 
             _add_provenance(paper, source)
 
-            if key not in seen:
-                seen[key] = paper
+            if not doi and not title_usable:
+                # No reliable identifier — keep the paper, but never merge it
+                # (a generic/short title could collide with unrelated work).
+                entries.append(paper)
+                continue
+
+            # Find an existing entry this paper duplicates (DOI first, then title).
+            entry = None
+            if doi and doi in by_doi:
+                entry = by_doi[doi]
+            elif title_usable and title in by_title:
+                entry = by_title[title]
+
+            if entry is None:
+                entries.append(paper)
+                entry = paper
             else:
-                _merge_duplicate(seen[key], paper)
+                _merge_duplicate(entry, paper)
 
-    # Sort by citation count
-    merged = sorted(seen.values(), key=lambda p: p.get("citation_count", 0) or 0, reverse=True)
+            # Register both keys so later records match by either identifier.
+            if doi:
+                by_doi[doi] = entry
+            if title_usable:
+                by_title[title] = entry
 
-    return merged
+    return sorted(entries, key=lambda p: p.get("citation_count", 0) or 0, reverse=True)
 
 
 def search_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
