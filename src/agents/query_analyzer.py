@@ -1,6 +1,11 @@
 """
-Query Analyzer Agent - Uses LLM to analyze topic and generate targeted search queries.
-Specialized for Software Engineering research with category-based discovery.
+Query Analyzer Agent - Uses an LLM to analyze a research topic and generate a
+small set of focused, on-topic search queries.
+
+Domain-agnostic and deterministic: it adapts to whatever the topic is (it is NOT
+specialized for any single field) and is run at temperature 0 so the same topic
+yields the same queries. The emphasis is on staying tightly on-topic rather than
+maximizing recall, to avoid pulling in unrelated papers.
 """
 
 from typing import Dict, Any, List
@@ -10,76 +15,65 @@ sys.path.insert(0, '..')
 
 # Use the LLM factory for multi-provider support
 from utils.llm_factory import create_llm
-from config import BILINGUAL_SEARCH
+from config import BILINGUAL_SEARCH, MAX_SEARCH_QUERIES
 
 
 def analyze_topic_with_llm(topic: str, llm) -> Dict[str, Any]:
     """
-    Use LLM to deeply analyze the research topic and generate categorized search queries.
+    Analyze the research topic and generate a few precise, on-topic queries.
     """
     bilingual_block = ""
     queries_format = """QUERIES:
 - specific query 1
 - specific query 2
-- specific query 3
-...etc"""
+...(5-6 total)"""
 
     if BILINGUAL_SEARCH:
         bilingual_block = """
-## IMPORTANT: BILINGUAL OUTPUT
-The audience reads both English and Turkish. Provide search queries in BOTH
-languages so we find relevant work in either. Put English queries under QUERIES
-and the Turkish equivalents (translate the technical terms naturally, the way
-Turkish academics actually phrase them) under QUERIES_TR.
+## BILINGUAL OUTPUT
+The audience reads both English and Turkish. Give the queries in BOTH languages:
+put the English queries under QUERIES and their Turkish equivalents (phrased the
+way Turkish academics actually write them) under QUERIES_TR. They must be
+translations of the SAME on-topic queries — do not introduce new subtopics.
 """
         queries_format = """QUERIES:
 - specific English query 1
 - specific English query 2
-...etc
+...(5-6 total)
 QUERIES_TR:
-- spesifik Türkçe sorgu 1
-- spesifik Türkçe sorgu 2
-...vb"""
+- aynı sorgunun Türkçesi 1
+- aynı sorgunun Türkçesi 2
+...(5-6 total)"""
 
-    prompt = f"""You are an expert researcher in Software Engineering, specifically in automated testing and AI/ML for code.
+    prompt = f"""You are an expert academic research librarian. Find papers that are
+STRICTLY about one specific research topic.
 
 RESEARCH TOPIC: "{topic}"
 
-I need to find ALL relevant academic papers on this topic. Analyze the topic deeply and provide:
+Rules:
+- Stay tightly focused on THIS exact topic. Do NOT drift into adjacent, broader,
+  or merely related fields. Every query must match papers specifically about
+  "{topic}".
+- Do NOT invent tools/systems you are unsure about. If none are clearly relevant,
+  leave SYSTEMS empty.
+- Prefer the precise terminology researchers use in paper titles for this topic.
 
-## 1. CORE CONCEPTS (5-7 key technical terms)
-List the fundamental concepts in this research area.
+Provide:
 
-## 2. KNOWN TOOLS/SYSTEMS (list all you know)
-List specific tools, frameworks, and systems that are famous in this research area.
-Think about papers from ICSE, FSE, ASE, ISSTA, ESEC, TSE, TOSEM conferences/journals.
-Examples might include specific named systems (like EvoSuite for test generation).
+## 1. CORE CONCEPTS (3-5 key terms that are central to THIS topic)
 
-## 3. RESEARCH CATEGORIES
-Categorize the research into sub-areas like:
-- Technique-focused papers
-- Empirical studies
-- Tool papers
-- Benchmark papers
-- Survey papers
+## 2. KEY METHODS/SYSTEMS (named methods, models or datasets specific to THIS
+topic — only if you are confident; otherwise leave empty)
 
-## 4. TARGETED SEARCH QUERIES (10-15 very specific queries)
-Create search queries that would find:
-- Papers about specific tools/systems
-- Empirical evaluations
-- Comparative studies
-- State-of-the-art surveys
-- Recent advances (2023-2025)
+## 3. TARGETED SEARCH QUERIES (exactly 5-6 precise, on-topic queries)
 {bilingual_block}
 Format your response EXACTLY like this:
 
-CONCEPTS: concept1, concept2, concept3, concept4, concept5
-SYSTEMS: system1, system2, system3, system4, system5, system6
-CATEGORIES: category1, category2, category3, category4
+CONCEPTS: concept1, concept2, concept3
+SYSTEMS: system1, system2
 {queries_format}
 
-Be very specific! Generic queries like "AI testing" won't find the right papers.
-Use terms that researchers actually use in paper titles."""
+Keep every query on-topic and specific. No generic or off-topic queries."""
 
     try:
         response = llm.invoke(prompt)
@@ -126,44 +120,29 @@ Use terms that researchers actually use in paper titles."""
 
 def generate_search_queries(topic: str, analysis: Dict[str, Any] = None) -> List[str]:
     """
-    Generate comprehensive search queries from LLM analysis.
+    Build a small, focused query list from the LLM analysis.
+
+    Deliberately conservative: just the original topic plus the LLM's on-topic
+    queries (English then Turkish). We no longer append generic expansions
+    ("<topic> survey", "<system> test generation", bare system names, concept
+    combos) — those broadened recall but caused topic drift into unrelated work.
     """
-    queries = []
-    
+    queries: List[str] = [topic]
+
     if analysis:
-        # 1. Use LLM-generated queries (most important) — English then Turkish
         queries.extend(analysis.get("queries", []))
         queries.extend(analysis.get("queries_tr", []))
 
-        # 2. Search for each discovered system/tool
-        for system in analysis.get("systems", [])[:8]:
-            if len(system) > 2:
-                queries.append(f"{system} test generation")
-                queries.append(system)  # Also search just the name
-        
-        # 3. Core concept combinations
-        concepts = analysis.get("concepts", [])
-        if len(concepts) >= 2:
-            queries.append(" ".join(concepts[:3]))
-            queries.append(" ".join(concepts[1:4]))
-    
-    # 4. Always include original topic variations
-    queries.insert(0, topic)
-    queries.append(f"{topic} empirical study")
-    queries.append(f"{topic} survey")
-    
-    # Remove duplicates while preserving order
+    # Remove duplicates while preserving order.
     seen = set()
     unique = []
     for q in queries:
-        q_clean = q.lower().strip()
+        q_clean = q.lower().strip().strip('"')
         if q_clean not in seen and len(q) > 4:
             seen.add(q_clean)
             unique.append(q)
-    
-    # Allow more queries when searching bilingually (EN + TR roughly doubles them).
-    cap = 30 if BILINGUAL_SEARCH else 20
-    return unique[:cap]
+
+    return unique[:MAX_SEARCH_QUERIES]
 
 
 def query_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -181,12 +160,13 @@ def query_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     print("=" * 65)
     print(f"Topic: {topic}\n")
     
-    llm = create_llm()
+    # Temperature 0 → deterministic, reproducible query generation.
+    llm = create_llm(temperature=0.0)
     analysis = None
-    
+
     if llm:
-        print("📝 Performing deep analysis with LLM...")
-        print("   (Discovering concepts, tools, systems, and generating queries)\n")
+        print("📝 Performing focused, deterministic analysis with LLM...")
+        print("   (Extracting concepts and a few on-topic queries)\n")
         analysis = analyze_topic_with_llm(topic, llm)
         
         if analysis:

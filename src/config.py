@@ -101,7 +101,9 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 # =============================================================================
 
 MAX_RESULTS_PER_SOURCE = int(os.getenv("MAX_RESULTS_PER_SOURCE", "15"))
-MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "20"))
+# Max expanded search queries. Kept small for focused, on-topic, deterministic
+# results (more queries = broader recall but more topic drift).
+MAX_SEARCH_QUERIES = int(os.getenv("MAX_SEARCH_QUERIES", "12"))
 
 # Number of worker threads for concurrent searching across queries/sources
 SEARCH_MAX_WORKERS = int(os.getenv("SEARCH_MAX_WORKERS", "8"))

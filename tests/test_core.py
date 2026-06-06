@@ -59,31 +59,26 @@ class TestQueryAnalyzer:
         }
         
         queries = generate_search_queries("unit test generation", analysis)
-        
+
         # Original topic should be first
         assert queries[0] == "unit test generation"
-        
-        # Should include LLM-generated queries
+
+        # Should include the LLM-generated on-topic queries
         assert any("LLM-based" in q for q in queries)
-        
-        # Should include system-specific queries
-        assert any("EvoSuite" in q for q in queries)
-        
-        # Should have <= 20 queries
-        assert len(queries) <= 20
-    
+
+        # Focused now: no bare-system or generic expansions are injected
+        assert not any(q.strip() == "EvoSuite" for q in queries)
+        assert not any("empirical study" in q.lower() for q in queries)
+
+        from config import MAX_SEARCH_QUERIES
+        assert len(queries) <= MAX_SEARCH_QUERIES
+
     def test_generate_search_queries_without_analysis(self):
-        """Test query generation when LLM is unavailable."""
+        """Without analysis, only the original topic is searched (no drift)."""
         from agents.query_analyzer import generate_search_queries
-        
+
         queries = generate_search_queries("unit test generation", None)
-        
-        # Should still include original topic
-        assert queries[0] == "unit test generation"
-        
-        # Should include empirical study and survey variations
-        assert any("empirical" in q.lower() for q in queries)
-        assert any("survey" in q.lower() for q in queries)
+        assert queries == ["unit test generation"]
 
 
 class TestAnalysisAgent:
