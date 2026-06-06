@@ -54,6 +54,7 @@ _NODE_LABELS = {
     "analysis": "Scoring & ranking papers",
     "summarizer": "Summarizing top papers",
     "prioritizer": "Optimizing reading order",
+    "recommender": "Building study plan & groups",
     "final": "Finalizing",
 }
 _NODE_ORDER = list(_NODE_LABELS.keys())
@@ -74,8 +75,12 @@ def _initial_state(query: str) -> Dict[str, Any]:
         "analysis_completed": False,
         "summarization_completed": False,
         "prioritization_completed": False,
+        "recommendation_completed": False,
         "ranked_papers": [],
         "reading_order": [],
+        "groups": {},
+        "reading_path": [],
+        "start_here": None,
         "messages": [],
         "errors": [],
     }
@@ -109,6 +114,9 @@ def search(req: SearchRequest) -> JSONResponse:
             "topic_analysis": result.get("topic_analysis"),
             "papers": papers,
             "count": len(papers),
+            "groups": result.get("groups") or {},
+            "reading_path": result.get("reading_path") or [],
+            "start_here": result.get("start_here"),
         }
     )
 
@@ -161,6 +169,9 @@ def search_stream(query: str) -> StreamingResponse:
                     "papers": papers,
                     "count": len(papers),
                     "topic_analysis": merged.get("topic_analysis"),
+                    "groups": merged.get("groups") or {},
+                    "reading_path": merged.get("reading_path") or [],
+                    "start_here": merged.get("start_here"),
                 }
             )
         except Exception as e:  # pragma: no cover - surfaced to client

@@ -64,10 +64,16 @@ class SystemState(TypedDict):
     analysis_completed: bool
     summarization_completed: bool
     prioritization_completed: bool
-    
+    recommendation_completed: bool
+
     # Final Results
     ranked_papers: List[dict]
     reading_order: List[dict]
+
+    # Study plan (from Recommender Agent)
+    groups: dict            # category -> list of paper_id
+    reading_path: List[dict]  # ordered staged plan
+    start_here: Optional[dict]
     
     # Messages for agent communication
     messages: List[dict]
@@ -86,8 +92,12 @@ def create_initial_state(query: str) -> SystemState:
         analysis_completed=False,
         summarization_completed=False,
         prioritization_completed=False,
+        recommendation_completed=False,
         ranked_papers=[],
         reading_order=[],
+        groups={},
+        reading_path=[],
+        start_here=None,
         messages=[],
         errors=[]
     )

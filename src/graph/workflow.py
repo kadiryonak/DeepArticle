@@ -22,6 +22,7 @@ from agents.metadata_agent import metadata_agent_node
 from agents.analysis_agent import analysis_agent_node
 from agents.summarizer_agent import summarizer_agent_node
 from agents.prioritizer_agent import prioritizer_agent_node
+from agents.recommender_agent import recommender_node
 
 
 def create_workflow():
@@ -37,6 +38,7 @@ def create_workflow():
     workflow.add_node("analysis", analysis_agent_node)
     workflow.add_node("summarizer", summarizer_agent_node)
     workflow.add_node("prioritizer", prioritizer_agent_node)
+    workflow.add_node("recommender", recommender_node)  # NEW: study plan & groups
     workflow.add_node("final", final_output_node)
     
     # Define edges
@@ -61,8 +63,9 @@ def create_workflow():
     # Summarizer -> Prioritizer
     workflow.add_edge("summarizer", "prioritizer")
     
-    # Prioritizer -> Final
-    workflow.add_edge("prioritizer", "final")
+    # Prioritizer -> Recommender -> Final
+    workflow.add_edge("prioritizer", "recommender")
+    workflow.add_edge("recommender", "final")
     
     # Final -> End
     workflow.add_edge("final", END)
@@ -85,8 +88,12 @@ def run_analysis(query: str) -> dict:
         "analysis_completed": False,
         "summarization_completed": False,
         "prioritization_completed": False,
+        "recommendation_completed": False,
         "ranked_papers": [],
         "reading_order": [],
+        "groups": {},
+        "reading_path": [],
+        "start_here": None,
         "messages": [],
         "errors": []
     }
