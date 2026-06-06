@@ -29,8 +29,38 @@ pip install -e ".[eval]"        # or: pip install deepeval
 #   GROQ_API_KEY=...
 
 # Run the evaluation suite
-pytest evals/ -v -m eval
+pytest src/evals/ -v -m eval
 ```
+
+## 🏁 Benchmark (100 topics)
+
+For a product-level quality report across many topics, run the benchmark over the
+100 bilingual research questions in `benchmark_questions.py`:
+
+```bash
+python -m evals.benchmark --limit 10            # quick shallow run (query metrics)
+python -m evals.benchmark --lang tr --limit 20  # Turkish subset
+python -m evals.benchmark --deep --limit 5      # full run (adds search + summary)
+python -m evals.benchmark                        # all 100 (expensive)
+```
+
+It writes a timestamped JSON + Markdown report to `benchmark_results/` and prints
+a summary table with per-metric **pass rates**, **means**, **latency** percentiles
+and an overall product-readiness **verdict**.
+
+| Metric | Bar | Mode | Meaning |
+|--------|-----|------|---------|
+| `query_relevance` | ≥ 0.60 | always | GEval: queries are on-topic & specific |
+| `bilingual_coverage` | = true | always | produced both EN and TR queries |
+| `query_count` | ≥ 10 | always | number of expanded queries |
+| `retrieval_count` | ≥ 10 | `--deep` | unique papers found across databases |
+| `dedup_integrity` | = true | `--deep` | zero duplicate titles in results |
+| `summary_faithfulness` | ≥ 0.70 | `--deep` | summary grounded in the abstract |
+| `summary_relevancy` | ≥ 0.60 | `--deep` | summary addresses the topic |
+
+> **Cost:** shallow mode is ~2 LLM calls/topic (fast); `--deep` adds live search +
+> a summary per topic (minutes/topic). Use `--limit` for quick checks and run the
+> full 100 periodically as a quality gate.
 
 If no provider key is configured, every eval test is **skipped** (not failed),
 so they never break a normal `pytest tests/` run or CI.
