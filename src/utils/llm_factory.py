@@ -7,7 +7,8 @@ from typing import Optional, Any
 
 from config import (
     LLM_PROVIDER, LLM_MODEL, LLM_TEMPERATURE,
-    GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY
+    GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY,
+    DEEPSEEK_API_KEY
 )
 
 
@@ -22,7 +23,7 @@ def create_llm(
     Create an LLM instance based on the specified or configured provider.
 
     Args:
-        provider: LLM provider (groq, openai, anthropic, google). Defaults to config.
+        provider: LLM provider (groq, openai, anthropic, google, deepseek). Defaults to config.
         model: Model name. Defaults to config.
         temperature: Temperature for generation. Defaults to config.
         top_p: Nucleus-sampling parameter. Pass for deterministic generation
@@ -50,6 +51,8 @@ def create_llm(
             return _create_anthropic_llm(model, temperature, top_p, top_k)
         elif provider == "google":
             return _create_google_llm(model, temperature, top_p, top_k)
+        elif provider == "deepseek":
+            return _create_deepseek_llm(model, temperature, top_p, top_k)
         else:
             print(f"⚠ Unknown provider: {provider}")
             return None
@@ -118,6 +121,40 @@ def _create_google_llm(model, temperature, top_p=None, top_k=None):
     return ChatGoogleGenerativeAI(**kwargs)
 
 
+def _create_deepseek_llm(model, temperature, top_p=None, top_k=None):
+    """Create DeepSeek LLM instance.
+
+    DeepSeek exposes an OpenAI-compatible API. Prefer the dedicated
+    ``langchain_deepseek`` integration if it's installed; otherwise fall back to
+    ``langchain_openai``'s ChatOpenAI pointed at DeepSeek's base URL — so it works
+    without adding a new hard dependency. (DeepSeek supports top_p, not top_k.)
+    """
+    if not DEEPSEEK_API_KEY:
+        print("⚠ DEEPSEEK_API_KEY not set")
+        return None
+
+    model = model or "deepseek-chat"
+
+    try:
+        from langchain_deepseek import ChatDeepSeek
+        kwargs = {"api_key": DEEPSEEK_API_KEY, "model": model, "temperature": temperature}
+        if top_p is not None:
+            kwargs["top_p"] = top_p
+        return ChatDeepSeek(**kwargs)
+    except ImportError:
+        # Fall back to the OpenAI-compatible endpoint.
+        from langchain_openai import ChatOpenAI
+        kwargs = {
+            "api_key": DEEPSEEK_API_KEY,
+            "model": model,
+            "temperature": temperature,
+            "base_url": "https://api.deepseek.com",
+        }
+        if top_p is not None:
+            kwargs["top_p"] = top_p
+        return ChatOpenAI(**kwargs)
+
+
 def get_available_providers() -> list:
     """Get list of providers with valid API keys."""
     providers = []
@@ -129,6 +166,8 @@ def get_available_providers() -> list:
         providers.append("anthropic")
     if GOOGLE_API_KEY:
         providers.append("google")
+    if DEEPSEEK_API_KEY:
+        providers.append("deepseek")
     return providers
 
 

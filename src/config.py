@@ -30,6 +30,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 
 # Search API Keys
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "")
@@ -50,7 +51,7 @@ ENABLE_RESOURCES = os.getenv("ENABLE_RESOURCES", "1").lower() not in ("0", "fals
 # LLM Provider Selection
 # =============================================================================
 
-# Available providers: "groq", "openai", "anthropic", "google"
+# Available providers: "groq", "openai", "anthropic", "google", "deepseek"
 # Auto-detect based on available API keys
 def get_active_provider():
     """Determine which LLM provider to use based on available API keys."""
@@ -62,6 +63,8 @@ def get_active_provider():
         return "anthropic"
     elif GOOGLE_API_KEY:
         return "google"
+    elif DEEPSEEK_API_KEY:
+        return "deepseek"
     return None
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "") or get_active_provider()
@@ -86,6 +89,10 @@ LLM_MODELS = {
     "google": {
         "model": "gemini-1.5-flash",  # Fast
         "alternatives": ["gemini-1.5-pro", "gemini-2.0-flash-exp"]
+    },
+    "deepseek": {
+        "model": "deepseek-chat",  # Fast & very cheap (OpenAI-compatible API)
+        "alternatives": ["deepseek-reasoner"]
     }
 }
 
@@ -199,7 +206,8 @@ def get_llm_info():
             (LLM_PROVIDER == "groq" and GROQ_API_KEY) or
             (LLM_PROVIDER == "openai" and OPENAI_API_KEY) or
             (LLM_PROVIDER == "anthropic" and ANTHROPIC_API_KEY) or
-            (LLM_PROVIDER == "google" and GOOGLE_API_KEY)
+            (LLM_PROVIDER == "google" and GOOGLE_API_KEY) or
+            (LLM_PROVIDER == "deepseek" and DEEPSEEK_API_KEY)
         )
     }
 
