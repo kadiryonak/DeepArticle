@@ -39,6 +39,8 @@ groq = ["langchain-groq>=0.1.0"]
 openai = ["langchain-openai>=0.2.0"]
 anthropic = ["langchain-anthropic>=0.2.0"]
 google = ["langchain-google-genai>=2.0.0"]
+# DeepSeek: optional — works via langchain-openai's compatible endpoint without this
+deepseek = ["langchain-deepseek>=0.1.0"]
 # Extra paper sources / features
 pdf = ["PyMuPDF>=1.24.0"]
 pubmed = ["xmltodict>=0.13.0"]
